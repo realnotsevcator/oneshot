@@ -14,10 +14,22 @@ from datetime import datetime
 import collections
 import statistics
 import csv
-from pathlib import Path
 from typing import Dict
-import wcwidth
+# wcwidth optional; provide fallback below
 
+
+# --- Display width helper (Termux-friendly) ---
+try:
+    import wcwidth as _wc
+    def _str_width(s): 
+        try:
+            return _wc.wcswidth(s)
+        except Exception:
+            return len(s)
+except Exception:
+    def _str_width(s): 
+        return len(s)
+# ---------------------------------------------
 
 class NetworkAddress:
     def __init__(self, mac):
@@ -842,11 +854,7 @@ class Companion:
         os.remove(self.tempconf)
 
     def __del__(self):
-        #self.cleanup()
-        try:
-            self.cleanup()
-        except (ImportError, AttributeError, TypeError):
-            pass
+        self.cleanup()
 
 
 class WiFiScanner:
@@ -983,7 +991,7 @@ class WiFiScanner:
             :param postfix: Truncate suffixes (such as ellipses)
             """
             # Calculate the original display width
-            original_width = wcwidth.wcswidth(s)
+            original_width = _str_width(s)
             
             # Scenario 1: The original width is exactly the same or smaller
             if original_width <= length:
@@ -993,13 +1001,13 @@ class WiFiScanner:
                 return s + ' ' * padding_needed
             
             # Scenario 2: Truncation is required
-            postfix_width = wcwidth.wcswidth(postfix)
+            postfix_width = _str_width(postfix)
             max_allowed = length - postfix_width
             
             current_width = 0
             truncated = []
             for c in s:
-                char_width = wcwidth.wcswidth(c)
+                char_width = _str_width(c)
                 if current_width + char_width > max_allowed:
                     break
                 truncated.append(c)
@@ -1011,7 +1019,7 @@ class WiFiScanner:
                 result += postfix
             
             # Accurately adjust the display width
-            result_width = wcwidth.wcswidth(result)
+            result_width = _str_width(result)
             if result_width > length:
                 # Remove pre truncation restrictions and switch to more precise truncation
                 # Emergency cutoff (to prevent exceeding the limit)
@@ -1019,7 +1027,7 @@ class WiFiScanner:
                 current_width = 0
                 safe_truncated = []
                 for c in result:
-                    char_width = wcwidth.wcswidth(c)
+                    char_width = _str_width(c)
                     if current_width + char_width > length:
                         break
                     safe_truncated.append(c)
@@ -1029,7 +1037,7 @@ class WiFiScanner:
                 if len(safe_result) < len(result):
                     safe_result += postfix
                     # Recheck the width
-                    if wcwidth.wcswidth(safe_result) > length:
+                    if _str_width(safe_result) > length:
                         # If the limit is still exceeded after adding ellipsis, remove the ellipsis
                         safe_result = safe_result[:-1]
                 return safe_result
@@ -1060,7 +1068,7 @@ class WiFiScanner:
                 colored('WPS locked', color='red'),
                 colored('Already stored', color='yellow')
             ))
-        print('Networks list:')
+        print('\n🔥Networks list:\n')
         print('{:<4} {:<18} {:<25} {:<8} {:<4} {:<27} {:<}'.format(
             '#', 'BSSID', 'ESSID', 'Sec.', 'PWR', 'WSC device name', 'WSC model'))
 
@@ -1274,14 +1282,6 @@ if __name__ == '__main__':
     if os.getuid() != 0:
         die("Run it as root")
 
-    if args.mtk_wifi:
-        wmtWifi_device = Path("/dev/wmtWifi")
-        if not wmtWifi_device.is_char_device():
-            die("Unable to activate MediaTek Wi-Fi interface device (--mtk-wifi): "
-                "/dev/wmtWifi does not exist or it is not a character device")
-        wmtWifi_device.chmod(0o644)
-        wmtWifi_device.write_text("1")
-
     if not ifaceUp(args.interface):
         die('Unable to up interface "{}"'.format(args.interface))
 
@@ -1326,6 +1326,3 @@ if __name__ == '__main__':
 
     if args.iface_down:
         ifaceUp(args.interface, down=True)
-
-    if args.mtk_wifi:
-        wmtWifi_device.write_text("0")
