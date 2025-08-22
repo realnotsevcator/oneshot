@@ -1105,7 +1105,7 @@ class WiFiScanner:
                 print(colored(line, color='yellow'))
             elif network['WPS locked']:
                 print(colored(line, color='red'))
-            elif self.and (model in self.vuln_list):
+            elif self.vuln_list and (model in self.vuln_list):
                 print(colored(line, color='green'))
             else:
                 print(line)
