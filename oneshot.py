@@ -692,7 +692,7 @@ class Companion:
             return False
 
         while True:
-            res = self.__handle_wpas(pixiemode=pixiemode, pbc_mode=pbc_mode, verbose=verbose, bssid=bssid.lower())
+            res = self.__handle_wpas(pixiemode=pixiemode, pbc_mode=pbc_mode, verbose=verbose, bssid=bssid.lower() if bssid else '')
             if not res:
                 break
             if self.connection_status.status == 'WSC_NACK':
