@@ -1263,13 +1263,6 @@ if __name__ == '__main__':
         help='Reverse order of networks in the list of networks. Useful on small displays'
     )
     parser.add_argument(
-        '--mtk-wifi',
-        action='store_true',
-        help='Activate MediaTek Wi-Fi interface driver on startup and deactivate it on exit '
-             '(for internal Wi-Fi adapters implemented in MediaTek SoCs). '
-             'Turn off Wi-Fi in the system settings before using this.'
-    )
-    parser.add_argument(
         '-v', '--verbose',
         action='store_true',
         help='Verbose output'
