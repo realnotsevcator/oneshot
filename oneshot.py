@@ -1178,18 +1178,16 @@ class WiFiScanner:
             palette = {
                 'green': '\033[92m{}\033[00m',
                 'red': '\033[91m{}\033[00m',
-                'yellow': '\033[93m{}\033[00m',
-                'orange': '\033[38;5;208m{}\033[00m'
+                'yellow': '\033[93m{}\033[00m'
             }
             return palette.get(color, '{}').format(text)
 
         if self.vuln_list:
-            print('Network marks: {1} {0} {2} {0} {3} {0} {4}'.format(
+            print('Network marks: {1} {0} {2} {0} {3}'.format(
                 '|',
                 colored('Possibly vulnerable', color='green'),
                 colored('WPS locked', color='red'),
-                colored('WPS code available', color='yellow'),
-                colored('WPS code can be from other models', color='orange')
+                colored('May connected by algorithms or known PINS', color='yellow')
             ))
         print('Networks list:')
         print('{:<4} {:<18} {:<25} {:<27} {:<}'.format(
@@ -1220,13 +1218,12 @@ class WiFiScanner:
                 print(colored(line, color='red'))
             else:
                 model_pins = generate_model_pins(mac=network['BSSID'], ssid=network.get('ESSID'), model=network['Model'], device=network['Device name'])
-                if model_pins:
-                    print(colored(line, color='yellow'),
-                          colored('WPS code available', color='yellow'))
-                elif generate_suggested_pins(network['BSSID']):
-                    print(colored(line, color='orange'),
-                          colored('WPS code can be from other models',
-                                  color='orange'))
+                suggested_pins = generate_suggested_pins(network['BSSID'])
+                if model_pins or suggested_pins:
+                    print(
+                        colored(line, color='yellow'),
+                        colored('May connected by algorithms or known PINS', color='yellow')
+                    )
                 elif self.vuln_list and (model in self.vuln_list):
                     print(colored(line, color='green'))
                 else:
