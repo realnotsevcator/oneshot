@@ -5,14 +5,14 @@ execute_command() {
     fi
 }
 
-execute_command pkg -y -o Dpkg::Options::=--force-confnew update
-execute_command pkg -y -o Dpkg::Options::=--force-confnew upgrade
-execute_command pkg -y -o Dpkg::Options::=--force-confnew install root-repo
-execute_command pkg -y -o Dpkg::Options::=--force-confnew install tsu
-execute_command pkg -y -o Dpkg::Options::=--force-confnew install python
-execute_command pkg -y -o Dpkg::Options::=--force-confnew install wpa-supplicant
-execute_command pkg -y -o Dpkg::Options::=--force-confnew install pixiewps
-execute_command pkg -y -o Dpkg::Options::=--force-confnew install iw
-execute_command pkg -y -o Dpkg::Options::=--force-confnew install openssl
+execute_command pkg update -y -o Dpkg::Options::=--force-confnew
+execute_command pkg upgrade -y -o Dpkg::Options::=--force-confnew
+execute_command pkg install root-repo -y -o Dpkg::Options::=--force-confnew
+execute_command pkg install tsu -y -o Dpkg::Options::=--force-confnew
+execute_command pkg install python -y -o Dpkg::Options::=--force-confnew
+execute_command pkg install wpa-supplicant -y -o Dpkg::Options::=--force-confnew
+execute_command pkg install pixiewps -y -o Dpkg::Options::=--force-confnew
+execute_command pkg install iw -y -o Dpkg::Options::=--force-confnew
+execute_command pkg install openssl -y -o Dpkg::Options::=--force-confnew
 
 execute_command curl -L -o oneshot.py https://raw.githubusercontent.com/sevcator/oneshot-termux/refs/heads/master/oneshot.py
