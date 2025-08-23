@@ -1175,20 +1175,13 @@ class WiFiScanner:
             return result + ' ' * (length - _str_width(result))
         def colored(text, color=None):
             """Returns colored text"""
-            if color:
-                if color == 'green':
-                    text = '\033[92m{}\033[00m'.format(text)
-                elif color == 'red':
-                    text = '\033[91m{}\033[00m'.format(text)
-                elif color == 'yellow':
-                    text = '\033[93m{}\033[00m'.format(text)
-                elif color == 'orange':
-                    text = '\033[38;5;208m{}\033[00m'.format(text)
-                else:
-                    return text
-            else:
-                return text
-            return text
+            palette = {
+                'green': '\033[92m{}\033[00m',
+                'red': '\033[91m{}\033[00m',
+                'yellow': '\033[93m{}\033[00m',
+                'orange': '\033[38;5;208m{}\033[00m'
+            }
+            return palette.get(color, '{}').format(text)
 
         if self.vuln_list:
             print('Network marks: {1} {0} {2} {0} {3} {0} {4}'.format(
@@ -1200,7 +1193,7 @@ class WiFiScanner:
             ))
         print('Networks list:')
         print('{:<4} {:<18} {:<25} {:<27} {:<}'.format(
-            '#', 'BSSID', 'ESSID', 'WSC device name', 'WSC model'))
+            '#', 'BSSID', 'ESSID (Signal)', 'WSC device name', 'WSC model'))
 
         network_list_items = list(network_list.items())
         if self.reverse:
@@ -1208,24 +1201,20 @@ class WiFiScanner:
         for n, network in network_list_items:
             number = f'{n})'
             model = '{} {}'.format(network['Model'], network['Model number'])
-            essid = truncateStr(network.get('ESSID', 'HIDDEN'), 25)
-            deviceName = truncateStr(network['Device name'], 27)
-    
-            # Processing the display width of other fields
+            essid_sig = f"{network.get('ESSID', 'HIDDEN')} ({network['Level']})"
+            essid = truncateStr(essid_sig, 25)
+            device_name = truncateStr(network['Device name'], 27)
+
             processed_number = truncateStr(number, 4)
             processed_bssid = truncateStr(network['BSSID'], 18)
-            processed_device = deviceName  # 27 columns of width have been processed
-            processed_model = model  # Assuming that the model fields do not need to be truncated or have been processed
 
-            # Directly concatenate the processed fields, separated by spaces in the middle
-            line_parts = [
+            line = ' '.join([
                 processed_number,
                 processed_bssid,
                 essid,
-                processed_device,
-                processed_model
-            ]
-            line = ' '.join(line_parts)
+                device_name,
+                model
+            ])
 
             if network['WPS locked']:
                 print(colored(line, color='red'))
