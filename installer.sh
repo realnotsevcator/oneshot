@@ -5,7 +5,8 @@ execute_command() {
     fi
 }
 
-execute_command apt-get update
+execute_command apt-get -y -o Dpkg::Options::=--force-confnew update
+execute_command apt-get -y -o Dpkg::Options::=--force-confnew upgrade
 execute_command apt-get -y -o Dpkg::Options::=--force-confnew install root-repo
 execute_command apt-get -y -o Dpkg::Options::=--force-confnew install tsu
 execute_command apt-get -y -o Dpkg::Options::=--force-confnew install python
