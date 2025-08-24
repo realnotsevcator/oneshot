@@ -1232,7 +1232,7 @@ class WiFiScanner:
         os.system('clear')
         networks = self.iw_scanner()
         if not networks:
-            print('[-] No WPS networks found.')
+            print('[-] No WPS networks found')
             return
         while 1:
             try:
@@ -1499,11 +1499,11 @@ if __name__ == '__main__':
                                                 if isinstance(args.bruteforce_pins, str):
                                                     print('[*] Trying PINs from file...')
                                                     if not try_bruteforce_file(companion, args.bssid, args.bruteforce_pins, delay=args.delay):
-                                                        print('[-] All PIN attempts failed.')
+                                                        print('[-] All PIN attempts failed')
                                                 elif args.bruteforce_pins is True:
                                                     companion.smart_bruteforce(args.bssid, args.pin, args.delay)
                                                 else:
-                                                    print('[-] All PIN attempts failed.')
+                                                    print('[-] All PIN attempts failed')
         if not args.loop:
             break
         else:
