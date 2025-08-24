@@ -1187,7 +1187,7 @@ class WiFiScanner:
                 '|',
                 colored('Possibly vulnerable', color='green'),
                 colored('WPS locked', color='red'),
-                colored('May connected by algorithms or known PINS', color='yellow')
+                colored('Algorithmic or known PINs', color='yellow')
             ))
         print('Networks list:')
         print('{:<4} {:<18} {:<25} {:<27} {:<}'.format(
@@ -1220,10 +1220,7 @@ class WiFiScanner:
                 model_pins = generate_model_pins(mac=network['BSSID'], ssid=network.get('ESSID'), model=network['Model'], device=network['Device name'])
                 suggested_pins = generate_suggested_pins(network['BSSID'])
                 if model_pins or suggested_pins:
-                    print(
-                        colored(line, color='yellow'),
-                        colored('May connected by algorithms or known PINS', color='yellow')
-                    )
+                    print(colored(line, color='yellow'))
                 elif self.vuln_list and (model in self.vuln_list):
                     print(colored(line, color='green'))
                 else:
@@ -1232,6 +1229,7 @@ class WiFiScanner:
         return network_list
 
     def prompt_network(self) -> dict:
+        os.system('clear')
         networks = self.iw_scanner()
         if not networks:
             print('[-] No WPS networks found.')
