@@ -1059,11 +1059,37 @@ class Companion:
         print('[{}] [{}] {}'.format(level, self.lastPwr, msg))
 
     def cleanup(self):
-        self.retsock.close()
-        self.wpas.terminate()
-        os.remove(self.res_socket_file)
-        shutil.rmtree(self.tempdir, ignore_errors=True)
-        os.remove(self.tempconf)
+        retsock = getattr(self, 'retsock', None)
+        if retsock is not None:
+            try:
+                retsock.close()
+            except OSError:
+                pass
+
+        wpas = getattr(self, 'wpas', None)
+        if wpas is not None:
+            try:
+                wpas.terminate()
+            except OSError:
+                pass
+
+        res_socket_file = getattr(self, 'res_socket_file', None)
+        if res_socket_file:
+            try:
+                os.remove(res_socket_file)
+            except FileNotFoundError:
+                pass
+
+        tempdir = getattr(self, 'tempdir', None)
+        if tempdir:
+            shutil.rmtree(tempdir, ignore_errors=True)
+
+        tempconf = getattr(self, 'tempconf', None)
+        if tempconf:
+            try:
+                os.remove(tempconf)
+            except FileNotFoundError:
+                pass
 
     def __del__(self):
         self.cleanup()
