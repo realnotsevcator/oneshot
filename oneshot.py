@@ -962,6 +962,10 @@ class Companion:
         self.wpas.stdout.read(300)
         target_bssid = canonical_bssid(bssid)
         self.bssid = target_bssid
+        # Keep the connection status BSSID in sync with the target BSSID.
+        # Older versions of the ConnectionStatus class might not define the
+        # attribute, so getattr/setattr are used for backwards compatibility.
+        setattr(self.connection_status, 'bssid', target_bssid)
         display_bssid = target_bssid.upper()
         if pbc_mode:
             if target_bssid:
@@ -1018,11 +1022,12 @@ class Companion:
                 pin = self.__prompt_wpspin(bssid) or '12345670'
         if pbc_mode:
             self.__wps_connection(bssid, pbc_mode=pbc_mode)
-            bssid = self.connection_status.bssid
+            bssid = getattr(self.connection_status, 'bssid', '')
             pin = '<PBC mode>'
         else:
             self.__wps_connection(bssid, pin, pixiemode)
-            bssid = self.connection_status.bssid or canonical_bssid(bssid)
+            conn_bssid = getattr(self.connection_status, 'bssid', '')
+            bssid = conn_bssid or canonical_bssid(bssid)
             storage_id = bssid_storage_name(bssid)
 
         if self.connection_status.status == 'GOT_PSK':
