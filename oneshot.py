@@ -681,6 +681,7 @@ class ConnectionStatus:
         self.last_m_message = 0
         self.essid = ''
         self.wpa_psk = ''
+        self.bssid = ''
 
     def isFirstHalfValid(self):
         return self.last_m_message > 5
