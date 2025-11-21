@@ -988,6 +988,7 @@ class Companion:
             print(self._explain_wpas_not_ok_status(cmd, r))
             return False
 
+        success = False
         try:
             while True:
                 check_exit()
@@ -1002,9 +1003,10 @@ class Companion:
                     break
         except KeyboardInterrupt:
             print("\nAborting…")
-
-        success = self.connection_status.status == 'GOT_PSK'
-        self.sendOnly('WPS_CANCEL')
+            raise
+        finally:
+            success = self.connection_status.status == 'GOT_PSK'
+            self.sendOnly('WPS_CANCEL')
         return success
 
     def single_connection(self, bssid=None, pin=None, pixiemode=False, pbc_mode=False, pixieforce=False,
